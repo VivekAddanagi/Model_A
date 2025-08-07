@@ -73,6 +73,7 @@ enum FlightMode {
     MODE_CRUISE
 };
 
+
 struct FlightModeConfig {
     bool stabilize_pitch;
     bool stabilize_roll;
