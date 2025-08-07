@@ -1,3 +1,4 @@
+/*
 #include "bmi323.h"
 #include <math.h>
 #include <Arduino.h>
@@ -164,3 +165,5 @@ void print_calibration_info() {
                   gyro_cal.bias_x, gyro_cal.bias_y, gyro_cal.bias_z);
     Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.z_offset);
 }
+
+*/

@@ -1,3 +1,4 @@
+/*
 #include "bmi323.h"     // Your existing BMI323 low-level driver
 #include <Arduino.h>    // Only if you're using PlatformIO with Arduino
 
@@ -139,3 +140,4 @@ Serial.printf("TEMP: %.2f\n", temp_c);
 
     }
 }
+*/
