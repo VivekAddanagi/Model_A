@@ -152,6 +152,16 @@ typedef enum {
     BMP390_MODE_CRUISE = 2
 } bmp390_mode_t;
 
+// ===== Profile Configuration =====
+typedef struct {
+    uint8_t osr_p;
+    uint8_t osr_t;
+    uint8_t iir_coeff;
+    uint8_t odr_sel;
+    uint8_t power_mode;
+} bmp390_profile_t;
+
+
 // --- Stored Calibration Snapshot ---
 typedef struct {
     float pressure_offset;
@@ -163,6 +173,8 @@ typedef struct {
 // ========================== Global Variables ==========================
 extern BMP390_calib_data_t bmp390_calib;
 extern volatile bool fifo_data_ready;
+
+
 
 //
 // ========================== Function Prototypes ==========================
@@ -182,7 +194,7 @@ float bmp390_compensate_temperature(int32_t uncomp_temp);
 float bmp390_compensate_pressure(int32_t uncomp_press, float t_lin);
 float bmp390_calculate_altitude(float pressure_pa);
 float bmp390_altitude_from_ground(float pressure, float ground_pressure);
-float bmp390_get_ground_pressure();
+float bmp390_get_ground_pressure(void);
 
 // --- Forced Measurement ---
 int bmp390_perform_single_forced_measurement(float *pressure_pa, float *temperature_c, bool enable_press, bool enable_temp);

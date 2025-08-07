@@ -9,14 +9,6 @@ volatile bool fifo_data_ready = false;
 
 static const uint8_t IIR_COEFFICIENTS[8] = {0, 1, 3, 7, 15, 31, 63, 127};
 
-// ===== Profile Configuration =====
-typedef struct {
-    uint8_t osr_p;
-    uint8_t osr_t;
-    uint8_t iir_coeff;
-    uint8_t odr_sel;
-    uint8_t power_mode;
-} bmp390_profile_t;
 
 
 int bmp390_set_power_mode(uint8_t mode_bits, bool enable_press, bool enable_temp) {
@@ -184,9 +176,6 @@ static bmp390_profile_t bmp390_profiles[] = {
         .odr_sel = 0x04
     }
 };
-
-
-
 
 void IRAM_ATTR bmp390_isr_handler() {
     fifo_data_ready = true;
