@@ -33,7 +33,8 @@ public:
     bool getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
                               uint8_t& throttle, uint8_t& mode, uint8_t& takeoff,
                               uint8_t& failsafe, uint8_t& photo, uint8_t& video);
-    bool isTimedOut(uint32_t timeoutMs = 200);
+    bool isTimedOut(uint32_t timeoutMs = 200) const;
+
 
 private:
     uint8_t _cs, _sck, _miso, _mosi;

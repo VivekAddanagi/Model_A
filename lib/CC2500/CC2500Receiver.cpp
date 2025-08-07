@@ -81,9 +81,10 @@ video    = _packet[9];
     return true;
 }
 
-bool CC2500Receiver::isTimedOut(uint32_t timeoutMs) {
+bool CC2500Receiver::isTimedOut(uint32_t timeoutMs) const {
     return (millis() - _lastPacketTime) > timeoutMs;
 }
+
 
 void CC2500Receiver::_reset() {
     Serial.println("[RESET] Sending SRES...");
