@@ -5,7 +5,12 @@
 #include <SPI.h>
 
 // SPI Pin Definitions
-#define CS_PIN    10
+
+#ifndef CS_PIN
+#define CS_PIN 8
+#endif
+
+
 #define SCK_PIN   12
 #define MISO_PIN  13
 #define MOSI_PIN  11

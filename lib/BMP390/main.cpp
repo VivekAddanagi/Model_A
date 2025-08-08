@@ -1,3 +1,4 @@
+/*
 #include <Arduino.h>
 #include "bmp390.h"
 
@@ -94,3 +95,5 @@ if (count > 0) {
     // Small delay to prevent spamming if no interrupt received
     delay(100);
 }
+
+*/

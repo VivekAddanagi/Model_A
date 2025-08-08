@@ -61,7 +61,7 @@
 #define LOOP_UPDATE_INTERVAL_MS   10    // 100Hz main update
 
 // === Calibration Durations ===
-#define CALIB_VALID_DURATION      86400UL  // 24 hours in seconds
+// #define CALIB_VALID_DURATION      86400UL  // 24 hours in seconds
 
 // === IR Sensor Logic ===
 #define IR_SETTLE_TIME_US         200
@@ -81,7 +81,7 @@
 // ────────────────────────────────────────────────────────────────
 //
 
-#define BMP390_EEPROM_SIZE        64
+// #define BMP390_EEPROM_SIZE        64
 #define CALIB_EEPROM_ADDR         0   // Start at address 0
 
 //
@@ -90,10 +90,17 @@
 // ────────────────────────────────────────────────────────────────
 //
 
-#define BMP390_INT_PIN            15  // INT pin for FIFO interrupt (assign if used)
+//#define BMP390_INT_PIN            21  // INT pin for FIFO interrupt (assign if used)
 
 // FIFO configuration
 #define BMP390_FIFO_MAX_SIZE      512
+
+#include <bmp390.h> // library header first
+#undef CALIB_VALID_DURATION
+#define CALIB_VALID_DURATION 86400UL
+
+#undef BMP390_EEPROM_SIZE
+#define BMP390_EEPROM_SIZE 64
 
 //
 // ────────────────────────────────────────────────────────────────

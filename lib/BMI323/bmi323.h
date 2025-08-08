@@ -8,7 +8,12 @@
 // ----------------------------
 // SPI Pin Configuration
 // ----------------------------
-#define CS_PIN   8
+
+#ifndef CS_PIN
+#define CS_PIN 8
+#endif
+
+
 #define SCK_PIN  12
 #define MISO_PIN 13
 #define MOSI_PIN 11
@@ -41,7 +46,9 @@
 
 // FIFO settings
 #define FIFO_FRAME_SIZE 16
+#ifndef FIFO_BUFFER_SIZE
 #define FIFO_BUFFER_SIZE 256
+#endif
 
 // Expected ID and reset command
 #define CHIP_ID_EXPECTED 0x43

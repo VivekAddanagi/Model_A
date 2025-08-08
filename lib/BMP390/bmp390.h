@@ -82,7 +82,11 @@ extern "C" {
 // ============================== FIFO Configuration ==============================
 //
 #define BMP390_FIFO_MAX_SIZE          512
-#define FIFO_BUFFER_SIZE              512
+#ifndef FIFO_BUFFER_SIZE
+#define FIFO_BUFFER_SIZE 512
+#endif
+
+
 
 //
 // =============================== Data Structures ===============================
