@@ -12,7 +12,7 @@ public:
     bool hasValidData() const;
     RXData getControlData() const;
     bool isSignalLost(uint32_t timeoutMs = 200) const;
-
+    
 private:
     CC2500Receiver _receiver;   // Now an object, not a pointer
     RXData _latestData;

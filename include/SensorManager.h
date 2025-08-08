@@ -37,7 +37,7 @@ private:
     void updateIMU();
     void updateBarometer();
     void updateIR();
-
+    
     // state
     IMUData imuData{};
     float obstacleDistances[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // FRONT,BACK,LEFT,RIGHT
