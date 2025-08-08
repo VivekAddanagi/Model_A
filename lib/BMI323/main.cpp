@@ -1,3 +1,4 @@
+/*
 #include <Arduino.h>
 #include "bmi323.h"
 
@@ -75,3 +76,4 @@ void loop() {
 }
 
 
+*/

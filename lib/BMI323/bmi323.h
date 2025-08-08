@@ -67,11 +67,15 @@ typedef struct {
     float z_offset;
 } AccelCalibration;
 
+#ifndef FLIGHT_MODE_DEFINED
+#define FLIGHT_MODE_DEFINED
 enum FlightMode {
     MODE_STABLE,
     MODE_HOVER,
     MODE_CRUISE
 };
+#endif
+
 
 
 struct FlightModeConfig {
