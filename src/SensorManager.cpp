@@ -105,7 +105,7 @@ void SensorManager::updateIMU() {
     }
 }
 
-IMUData SensorManager::getIMU() {
+IMUData SensorManager::getIMU() const{
     return imuData;
 }
 
@@ -149,11 +149,11 @@ void SensorManager::updateBarometer() {
     }
 }
 
-float SensorManager::getPressure() {
+float SensorManager::getPressure() const {
     return currentPressure;
 }
 
-float SensorManager::getAltitude() {
+float SensorManager::getAltitude() const {
     return currentAltitude;
 }
 
@@ -216,7 +216,7 @@ void SensorManager::updateIR() {
     digitalWrite(IR_EMITTER_RIGHT, LOW);
 }
 
-float SensorManager::getObstacleDistance(Direction dir) {
+float SensorManager::getObstacleDistance(Direction dir) const {
     switch (dir) {
         case Direction::FRONT: return obstacleDistances[0];
         case Direction::BACK:  return obstacleDistances[1];
@@ -226,7 +226,7 @@ float SensorManager::getObstacleDistance(Direction dir) {
     }
 }
 
-bool SensorManager::isObstacleNear(Direction dir) {
+bool SensorManager::isObstacleNear(Direction dir) const {
     float val = getObstacleDistance(dir);
     // Note: IR returns ADC counts — higher means closer in your code
     return val > IR_DANGER_THRESHOLD;

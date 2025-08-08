@@ -28,33 +28,33 @@ unsigned long last_update_time = 0;
 
 void bmi323_writeRegister(uint8_t reg, uint16_t value) {
     SPI.beginTransaction(bmi323_spi_settings);
-    digitalWrite(CS_PIN, LOW);
+    digitalWrite(BMI323_CS_PIN, LOW);
     SPI.transfer(reg & 0x7F);
     SPI.transfer(value & 0xFF);
     SPI.transfer((value >> 8) & 0xFF);
-    digitalWrite(CS_PIN, HIGH);
+    digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
 }
 
 uint16_t bmi323_readRegister(uint8_t reg) {
     SPI.beginTransaction(bmi323_spi_settings);
-    digitalWrite(CS_PIN, LOW);
+    digitalWrite(BMI323_CS_PIN, LOW);
     SPI.transfer(reg | 0x80);
     SPI.transfer(0x00);
     uint8_t lsb = SPI.transfer(0x00);
     uint8_t msb = SPI.transfer(0x00);
-    digitalWrite(CS_PIN, HIGH);
+    digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
     return (msb << 8) | lsb;
 }
 
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length) {
-    digitalWrite(CS_PIN, LOW);
+    digitalWrite(BMI323_CS_PIN, LOW);
     SPI.transfer(reg | 0x80);
     for (uint16_t i = 0; i < length; i++) {
         buffer[i] = SPI.transfer(0x00);
     }
-    digitalWrite(CS_PIN, HIGH);
+    digitalWrite(BMI323_CS_PIN, HIGH);
 }
 
 // ----------------------------
@@ -81,9 +81,9 @@ bool bmi323_writeExtendedRegister(uint8_t extReg, uint16_t value) {
 // ----------------------------
 
 bool bmi323_init(void) {
-    SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, CS_PIN);
-    pinMode(CS_PIN, OUTPUT);
-    digitalWrite(CS_PIN, HIGH);
+    SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, BMI323_CS_PIN);
+    pinMode(BMI323_CS_PIN, OUTPUT);
+    digitalWrite(BMI323_CS_PIN, HIGH);
     delay(10);
 
     if ((bmi323_readRegister(CHIP_ID_REG) & 0xFF) != CHIP_ID_EXPECTED)
@@ -117,11 +117,11 @@ bool bmi323_read(bmi323_data_t* data) {
 
     uint8_t buffer[13];
     SPI.beginTransaction(bmi323_spi_settings);
-    digitalWrite(CS_PIN, LOW);
+    digitalWrite(BMI323_CS_PIN, LOW);
     SPI.transfer(ACC_X_REG | 0x80);
     buffer[0] = SPI.transfer(0x00);
     for (int i = 1; i < 13; ++i) buffer[i] = SPI.transfer(0x00);
-    digitalWrite(CS_PIN, HIGH);
+    digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
 
     data->ax = (buffer[2] << 8) | buffer[1];

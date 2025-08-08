@@ -3,121 +3,80 @@
 
 #include <Arduino.h>
 
-#define IMU_UPDATE_INTERVAL_MS   10
-#define BARO_UPDATE_INTERVAL_MS  50
-#define IR_UPDATE_INTERVAL_MS    100
+/*
+  Centralized project configuration.
+  Keep driver libraries' defines guarded (they use #ifndef checks)
+  so including library headers after Config.h won't clash.
+*/
 
-
-//
-// ────────────────────────────────────────────────────────────────
-//   PLATFORM & I/O CONFIGURATION
-// ────────────────────────────────────────────────────────────────
-//
-
-// === I2C (Barometer BMP390) ===
+// Update these to match your board wiring
 #define I2C_SDA_PIN           21
 #define I2C_SCL_PIN           22
-#define I2C_MASTER_FREQ_HZ    400000  // 400 kHz
+#define I2C_MASTER_FREQ_HZ    400000
 
-// === SPI Shared Bus (BMI323 & CC2500) ===
 #define SPI_SCK_PIN           12
 #define SPI_MISO_PIN          13
 #define SPI_MOSI_PIN          11
 
-// === BMI323 IMU ===
+// Per-device chip selects (no global CS_PIN)
 #define BMI323_CS_PIN         8
-#define BMI323_SPI_SPEED      6500000
-
-// === CC2500 Receiver ===
 #define CC2500_CS_PIN         10
-#define CC2500_GDO0_PIN       14
-#define CC2500_SPI_SPEED      6500000
-#define CC2500_SPI_MODE       SPI_MODE3
+#define CC2500_GDO0_PIN      14
 
-// === LED Indicators ===
+// LED pins
 #define FRONT_LED_PIN         5
 #define REAR_LED_PIN          43
 
-// === LED PWM Configuration ===
-#define FRONT_LED_PWM_CHANNEL 0
-#define FRONT_LED_PWM_FREQ    5000
-#define FRONT_LED_PWM_RES     8
-
-// === Motor Pins (PWM) ===
+// Motor pins (PWM)
 #define MOTOR_FL_PIN          25
 #define MOTOR_FR_PIN          26
 #define MOTOR_BL_PIN          27
 #define MOTOR_BR_PIN          32
 
-// === IR Obstacle Avoidance ===
-#define IR_RECEIVER_PIN       1
+// IR sensors (analog receiver + 4 emitters)
+#define IR_RECEIVER_PIN       1   // ADC1 channel (adjust to your board)
 #define IR_EMITTER_FRONT      40
 #define IR_EMITTER_RIGHT      41
 #define IR_EMITTER_BACK       38
 #define IR_EMITTER_LEFT       39
 
-//
-// ────────────────────────────────────────────────────────────────
-//   FLIGHT SYSTEM SETTINGS
-// ────────────────────────────────────────────────────────────────
-//
+// Timing (millis)
+#define IMU_UPDATE_INTERVAL_MS   10
+#define BARO_UPDATE_INTERVAL_MS  50
+#define IR_UPDATE_INTERVAL_MS    25
+#define LOOP_UPDATE_INTERVAL_MS  10   // general loop cadence
 
-// === Flight Loop Timing ===
-#define LOOP_UPDATE_INTERVAL_MS   10    // 100Hz main update
-
-// === Calibration Durations ===
-// #define CALIB_VALID_DURATION      86400UL  // 24 hours in seconds
-
-// === IR Sensor Logic ===
+// IR thresholds (tune experimentally)
 #define IR_SETTLE_TIME_US         200
 #define IR_READ_DELAY_US          300
-#define IR_POLL_INTERVAL_MS       25
 #define IR_DANGER_THRESHOLD       2000
 
-// === CC2500 Packet Protocol ===
+// CC2500 protocol constants
 #define CC2500_START_BYTE         0x88
 #define CC2500_PACKET_SIZE        12
 #define CC2500_DATA_BYTES         10
-#define RSSI_OFFSET_250K          72
+#define RSSI_OFFSET_250K         72
 
-//
-// ────────────────────────────────────────────────────────────────
-//   EEPROM STORAGE CONFIG
-// ────────────────────────────────────────────────────────────────
-//
-
-// #define BMP390_EEPROM_SIZE        64
+// EEPROM & calibration
 #ifndef CALIB_EEPROM_ADDR
-#define CALIB_EEPROM_ADDR 0   // Start at address 0
+#define CALIB_EEPROM_ADDR        0
 #endif
-       
 
-//
-// ────────────────────────────────────────────────────────────────
-//   BMP390 Configuration Registers (used in bmp390.h too)
-// ────────────────────────────────────────────────────────────────
-//
-
-//#define BMP390_INT_PIN            21  // INT pin for FIFO interrupt (assign if used)
-
-// FIFO configuration
-#define BMP390_FIFO_MAX_SIZE      512
-
-#include <bmp390.h> // library header first
 #ifndef CALIB_VALID_DURATION
-#define CALIB_VALID_DURATION 86400UL
+#define CALIB_VALID_DURATION     86400UL   // 24 hours by default (override if you want longer)
 #endif
 
+// BMP390 cache/eeprom size (driver may define own fallback)
+#ifndef BMP390_EEPROM_SIZE
+#define BMP390_EEPROM_SIZE       64
+#endif
 
-#undef BMP390_EEPROM_SIZE
-#define BMP390_EEPROM_SIZE 64
+// FIFO buffer size (guarded so drivers can pick their own if needed)
+#ifndef FIFO_BUFFER_SIZE
+#define FIFO_BUFFER_SIZE        512
+#endif
 
-//
-// ────────────────────────────────────────────────────────────────
-//   ENUMERATIONS & FLIGHT MODES
-// ────────────────────────────────────────────────────────────────
-//
-
+// Flight states
 enum DroneState {
     STATE_INIT,
     STATE_ARMED,
@@ -126,6 +85,7 @@ enum DroneState {
     STATE_FAILSAFE
 };
 
+// Single canonical FlightMode definition guard
 #ifndef FLIGHT_MODE_DEFINED
 #define FLIGHT_MODE_DEFINED
 enum FlightMode {
@@ -134,6 +94,5 @@ enum FlightMode {
     MODE_CRUISE
 };
 #endif
-
 
 #endif // CONFIG_H

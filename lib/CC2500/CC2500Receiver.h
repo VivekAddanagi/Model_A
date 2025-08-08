@@ -3,46 +3,78 @@
 
 #include <Arduino.h>
 #include <SPI.h>
+#include <stdint.h>
+#include "Config.h" // Central config for pin definitions
 
-// SPI Pin Definitions
+// =============================== Pin Definitions ===============================
+// Use Config.h values if provided, else fallback to defaults
 
-#ifndef CS_PIN
-#define CS_PIN 8
+#ifndef CC2500_CS_PIN
+#define CC2500_CS_PIN 10
 #endif
 
+#ifndef CC2500_GDO0_PIN
+#define CC2500_GDO0_PIN 14
+#endif
 
-#define SCK_PIN   12
-#define MISO_PIN  13
-#define MOSI_PIN  11
-#define GDO0_PIN  14
+#ifndef SPI_SCK_PIN
+#define SPI_SCK_PIN 12
+#endif
 
-// SPI Settings
+#ifndef SPI_MISO_PIN
+#define SPI_MISO_PIN 13
+#endif
+
+#ifndef SPI_MOSI_PIN
+#define SPI_MOSI_PIN 11
+#endif
+
+// =============================== SPI Settings ===============================
+#ifndef CC2500_SPI_SPEED
 #define CC2500_SPI_SPEED 6500000
-#define CC2500_SPI_MODE  SPI_MODE3
+#endif
 
-// Packet Structure
+#ifndef CC2500_SPI_MODE
+#define CC2500_SPI_MODE SPI_MODE3
+#endif
 
-#define CC2500_DATA_BYTES 10
-#define CC2500_PACKET_SIZE 12  // 10 + 2 (status)
+// =============================== Packet Structure ===============================
+#define CC2500_DATA_BYTES     10
+#define CC2500_PACKET_SIZE    12  // 10 data + 2 status bytes
 
+#define CC2500_START_BYTE     0x88
+#define CC2500_RX_STATUS_SIZE 2
+#define RSSI_OFFSET_250K      72
 
-#define CC2500_START_BYTE        0x88
-#define CC2500_RX_STATUS_SIZE    2
-#define RSSI_OFFSET_250K         72
-
+// =============================== CC2500 Receiver Class ===============================
 class CC2500Receiver {
 public:
-    CC2500Receiver(uint8_t csPin, uint8_t sckPin, uint8_t misoPin, uint8_t mosiPin);
+    // Constructor uses central config defaults
+    CC2500Receiver(uint8_t csPin   = CC2500_CS_PIN,
+                   uint8_t gdo0Pin = CC2500_GDO0_PIN,
+                   uint8_t sckPin  = SPI_SCK_PIN,
+                   uint8_t misoPin = SPI_MISO_PIN,
+                   uint8_t mosiPin = SPI_MOSI_PIN);
+
+    // Setup & operation
     void begin();
     bool receivePacket();
+
+    // Data access
     bool getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
                               uint8_t& throttle, uint8_t& mode, uint8_t& takeoff,
                               uint8_t& failsafe, uint8_t& photo, uint8_t& video);
     bool isTimedOut(uint32_t timeoutMs = 200) const;
 
+    // Frequency/channel tuning
+    void setFrequency(uint32_t freq);
+    void setChannel(uint8_t ch);
 
 private:
-    uint8_t _cs, _sck, _miso, _mosi;
+    // Pins
+    uint8_t _cs, _gdo0, _sck, _miso, _mosi;
+
+    // Packet data
     uint8_t _packet[CC2500_PACKET_SIZE];
     uint32_t _lastPacketTime;
     bool _hasValidPacket;
@@ -75,9 +107,10 @@ private:
     void _debugPrintPacket(const uint8_t* data, uint8_t len);
     uint8_t _readMARCState();
     void _printConfigSummary();
+
     // SPI helpers
     void _select();
     void _deselect();
 };
 
-#endif
+#endif // CC2500_RECEIVER_H

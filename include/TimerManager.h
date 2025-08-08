@@ -4,33 +4,34 @@
 #include <Arduino.h>
 #include <functional>
 
-#define USE_HARDWARE_TIMER 0   // 0 = millis() mode, 1 = ESP32 hardware timer
+#define USE_HARDWARE_TIMER 0
 
 class TimerManager {
 public:
     typedef std::function<void()> TaskCallback;
 
     struct Task {
-        TaskCallback callback;
-        uint32_t intervalMs;
-        uint32_t lastRun;
+        TaskCallback callback = nullptr;
+        uint32_t intervalMs = 0;
+        uint32_t lastRun = 0;
+        bool enabled = false;
     };
 
     TimerManager();
 
-    // Add a new periodic task
-    void addTask(TaskCallback cb, uint32_t intervalMs);
+    // Add a periodic task. Returns true if added.
+    bool addTask(TaskCallback cb, uint32_t intervalMs);
 
-    // Call this inside loop() if in millis() mode
+    // Call in loop() for millis()-based scheduling
     void update();
 
-    // Hardware timer setup (future use)
+    // Stub for future hardware timer mode
     void startHardwareTimer(uint32_t intervalMicros);
 
 private:
-    static const int MAX_TASKS = 10;
+    static const int MAX_TASKS = 12;
     Task tasks[MAX_TASKS];
-    int taskCount;
+    int taskCount = 0;
 
 #if USE_HARDWARE_TIMER
     hw_timer_t * timer = nullptr;
@@ -38,4 +39,4 @@ private:
 #endif
 };
 
-#endif
+#endif // TIMERMANAGER_H

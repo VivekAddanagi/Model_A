@@ -2,34 +2,45 @@
 #define SENSOR_MANAGER_H
 
 #include <Arduino.h>
-#include "types.h"       // Shared data structures
-#include "Config.h"      // Centralized pin assignments & settings
-#include "bmi323.h"      // IMU driver
-#include "bmp390.h"      // Barometer driver
+#include "types.h"
+#include "Config.h"
+#include "bmi323.h"
+#include "bmp390.h"
 
-// SensorManager.h
-
+// SensorManager provides unified access to IMU, barometer, IR avoidance
 class SensorManager {
 public:
+    SensorManager() = default;
+    ~SensorManager() = default;
+
+    // init sensors, load calibrations from flash
     void init();
+
+    // non-blocking update; call in loop()
     void update();
-    IMUData getIMU();
-    float getAltitude();
-    float getPressure();
-    bool isObstacleNear(Direction dir);
-    float getObstacleDistance(Direction dir);
+
+    // getters (copy small structs)
+    IMUData getIMU() const;
+    float getAltitude() const;
+    float getPressure() const;
+
+    // IR obstacle API (true if closer than threshold)
+    bool isObstacleNear(Direction dir) const;
+    float getObstacleDistance(Direction dir) const;
+
+    // Calibration routines (interactive or automated)
     void calibrateIMU();
     void calibrateBarometer();
 
 private:
-    // Internal helper functions
+    // helpers
     void updateIMU();
     void updateBarometer();
     void updateIR();
 
-    // Internal state variables
+    // state
     IMUData imuData{};
-    float obstacleDistances[4] = {0}; // FRONT, BACK, LEFT, RIGHT
+    float obstacleDistances[4] = {0.0f, 0.0f, 0.0f, 0.0f}; // FRONT,BACK,LEFT,RIGHT
     float currentAltitude = 0.0f;
     float currentPressure = 0.0f;
 
@@ -38,4 +49,4 @@ private:
     uint32_t lastIRUpdate = 0;
 };
 
-#endif
+#endif // SENSOR_MANAGER_H

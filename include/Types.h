@@ -1,11 +1,9 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-#include <stdint.h>  // For standard integer types
+#include <stdint.h>
 
-// ============================
-// Direction Enum for Obstacle Sensors
-// ============================
+// Direction enum (class-style avoids name collisions)
 enum class Direction {
     FRONT,
     BACK,
@@ -13,61 +11,50 @@ enum class Direction {
     RIGHT
 };
 
-// ============================
-// IMU Data (Accelerometer + Gyro)
-// ============================
+// IMU combined data
 struct IMUData {
-    float ax;  // Acceleration X (m/s²)
-    float ay;  // Acceleration Y
-    float az;  // Acceleration Z
-    float gx;  // Gyro X (deg/s)
-    float gy;  // Gyro Y
-    float gz;  // Gyro Z
+    float ax = 0.0f;
+    float ay = 0.0f;
+    float az = 0.0f;
+    float gx = 0.0f;
+    float gy = 0.0f;
+    float gz = 0.0f;
 };
 
-// ============================
-// Altimeter / Barometer Data
-// ============================
+// Altimeter / barometer processed values
 struct AltimeterData {
-    float altitude;     // meters
-    float pressure;     // Pascals
-    float temperature;  // Celsius
+    float altitude = 0.0f;
+    float pressure = 0.0f;
+    float temperature = 0.0f;
 };
 
-// ============================
-// RX Control Data from Remote
-// ============================
+// RX control packet (match CC2500 payload fields)
 struct RXData {
-    int16_t throttle;
-    int16_t pitch;
-    int16_t roll;
-    int16_t yaw;
+    int16_t throttle = 0;
+    int16_t pitch    = 0;
+    int16_t roll     = 0;
+    int16_t yaw      = 0;
 
-    uint8_t mode;      // flight mode
-    bool takeoff;      // takeoff command
-    bool failsafe;     // failsafe flag
-    bool photo;        // take photo command
-    bool video;        // start/stop video command
+    uint8_t mode     = 0;
+    bool takeoff     = false;
+    bool failsafe    = false;
+    bool photo       = false;
+    bool video       = false;
 };
 
-// ============================
-// IMU Calibration Data
-// ============================
+// Simple calibration containers
 struct IMUCalibration {
-    float gyroOffsetX;
-    float gyroOffsetY;
-    float gyroOffsetZ;
-    float accelOffsetX;
-    float accelOffsetY;
-    float accelOffsetZ;
+    float gyroOffsetX = 0;
+    float gyroOffsetY = 0;
+    float gyroOffsetZ = 0;
+    float accelOffsetX = 0;
+    float accelOffsetY = 0;
+    float accelOffsetZ = 0;
 };
 
-// ============================
-// Barometer Calibration Data
-// ============================
 struct BaroCalibration {
-    float pressureOffset;
-    float altitudeOffset;
+    float pressureOffset = 0;
+    float altitudeOffset = 0;
 };
 
 #endif // TYPES_H

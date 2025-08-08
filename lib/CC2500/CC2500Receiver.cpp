@@ -1,20 +1,23 @@
 #include "CC2500Receiver.h"
+#include <Arduino.h>
 
 #define SRX    0x34
 #define SIDLE  0x36
 #define SFRX   0x3A
 #define RX_FIFO_BURST 0xFF
 
-CC2500Receiver::CC2500Receiver(uint8_t csPin, uint8_t sckPin, uint8_t misoPin, uint8_t mosiPin)
-    : _cs(csPin), _sck(sckPin), _miso(misoPin), _mosi(mosiPin),
+CC2500Receiver::CC2500Receiver(uint8_t csPin, uint8_t gdo0Pin,
+                               uint8_t sckPin, uint8_t misoPin, uint8_t mosiPin)
+    : _cs(csPin), _gdo0(gdo0Pin), _sck(sckPin), _miso(misoPin), _mosi(mosiPin),
       _lastPacketTime(0), _hasValidPacket(false) {}
+
 
 void CC2500Receiver::begin() {
     Serial.println("[CC2500] Initializing SPI and GPIO...");
-    SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, CS_PIN);
+    SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, CC2500_CS_PIN);
     pinMode(_cs, OUTPUT);
     pinMode(_miso, INPUT);
-    pinMode(GDO0_PIN, INPUT_PULLUP);
+    pinMode(CC2500_GDO0_PIN, INPUT_PULLUP);
     digitalWrite(_cs, HIGH);
 
     _reset();
@@ -164,7 +167,7 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
 
     // ✅ Wait for end of packet via GDO0
     unsigned long start = millis();
-    while (digitalRead(GDO0_PIN) == LOW) {
+    while (digitalRead(CC2500_GDO0_PIN) == LOW) {
         if (millis() - start > 100) {
             Serial.println("[TIMEOUT] GDO0 didn't trigger (RX complete not signaled)");
             return false;

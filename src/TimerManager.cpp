@@ -2,12 +2,18 @@
 
 TimerManager::TimerManager() : taskCount(0) {}
 
-void TimerManager::addTask(TaskCallback cb, uint32_t intervalMs) {
+bool TimerManager::addTask(TaskCallback cb, uint32_t intervalMs) {
     if (taskCount < MAX_TASKS) {
-        tasks[taskCount] = { cb, intervalMs, millis() };
+        tasks[taskCount].callback = cb;
+        tasks[taskCount].intervalMs = intervalMs;
+        tasks[taskCount].lastRun = millis();
         taskCount++;
+        return true;
     }
+    return false;
 }
+
+
 
 void TimerManager::update() {
 #if USE_HARDWARE_TIMER == 0

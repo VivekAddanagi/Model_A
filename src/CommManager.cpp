@@ -1,10 +1,11 @@
 #include "CommManager.h"
-#include "types.h" 
+#include "Config.h"
+#include <string.h> // for memset
 
 CommManager::CommManager()
     : _receiver(CC2500_CS_PIN, SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN),
-      _validPacket(false) {
-    // Zero initialize RXData
+      _validPacket(false) 
+{
     memset(&_latestData, 0, sizeof(_latestData));
 }
 
@@ -18,15 +19,15 @@ void CommManager::update() {
         uint8_t throttle, mode, takeoff, failsafe, photo, video;
 
         if (_receiver.getLatestControlData(yaw, pitch, roll, throttle, mode, takeoff, failsafe, photo, video)) {
-            _latestData.yaw = yaw;
-            _latestData.pitch = pitch;
-            _latestData.roll = roll;
+            _latestData.yaw      = yaw;
+            _latestData.pitch    = pitch;
+            _latestData.roll     = roll;
             _latestData.throttle = throttle;
-            _latestData.mode = mode;
-            _latestData.takeoff = takeoff;
+            _latestData.mode     = mode;
+            _latestData.takeoff  = takeoff;
             _latestData.failsafe = failsafe;
-            _latestData.photo = photo;
-            _latestData.video = video;
+            _latestData.photo    = photo;
+            _latestData.video    = video;
             _validPacket = true;
         } else {
             _validPacket = false;

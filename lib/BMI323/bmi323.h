@@ -2,25 +2,32 @@
 #define BMI323_H
 
 #include <Arduino.h>
+#include <SPI.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "Config.h"  // Central project config
 
-// ----------------------------
-// SPI Pin Configuration
-// ----------------------------
-
-#ifndef CS_PIN
-#define CS_PIN 8
+// ---------------------------------------------------
+// Chip Select pin from Config.h (default fallback)
+// ---------------------------------------------------
+#ifndef BMI323_CS_PIN
+#define BMI323_CS_PIN 10
 #endif
 
+// SPI pins (can also be overridden in Config.h)
+#ifndef SPI_SCK_PIN
+#define SPI_SCK_PIN  12
+#endif
+#ifndef SPI_MISO_PIN
+#define SPI_MISO_PIN 13
+#endif
+#ifndef SPI_MOSI_PIN
+#define SPI_MOSI_PIN 11
+#endif
 
-#define SCK_PIN  12
-#define MISO_PIN 13
-#define MOSI_PIN 11
-
-// ----------------------------
+// ---------------------------------------------------
 // BMI323 Register Addresses
-// ----------------------------
+// ---------------------------------------------------
 #define CHIP_ID_REG            0x00
 #define ERR_REG                0x01
 #define STATUS_REG             0x02
@@ -47,7 +54,7 @@
 // FIFO settings
 #define FIFO_FRAME_SIZE 16
 #ifndef FIFO_BUFFER_SIZE
-#define FIFO_BUFFER_SIZE 256
+#define FIFO_BUFFER_SIZE 512
 #endif
 
 // Expected ID and reset command
@@ -57,7 +64,6 @@
 // ----------------------------
 // Data Structures
 // ----------------------------
-
 typedef struct {
     int16_t ax, ay, az;
     int16_t gx, gy, gz;
@@ -83,8 +89,6 @@ enum FlightMode {
 };
 #endif
 
-
-
 struct FlightModeConfig {
     bool stabilize_pitch;
     bool stabilize_roll;
@@ -100,7 +104,6 @@ struct FlightModeConfig {
 // ----------------------------
 // Global State
 // ----------------------------
-
 extern bmi323_data_t sensor_data;
 extern GyroCalibration gyro_cal;
 extern AccelCalibration accel_cal;
@@ -114,9 +117,8 @@ extern float estimated_yaw;
 extern unsigned long last_update_time;
 
 // ----------------------------
-// Function Declarations
+// C API (original driver functions)
 // ----------------------------
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -151,7 +153,7 @@ void bmi323_setup_fifo(void);
 void bmi323_read_fifo(void);
 
 // Orientation
-void update_orientation(float ax, float ay, float az, float gx, float gy ,float gz);
+void update_orientation(float ax, float ay, float az, float gx, float gy, float gz);
 
 // UI
 FlightMode select_flight_mode(void);
@@ -160,4 +162,21 @@ FlightMode select_flight_mode(void);
 }
 #endif
 
-#endif  // BMI323_H
+// ----------------------------
+// C++ Class API
+// ----------------------------
+#ifdef __cplusplus
+class BMI323 {
+public:
+    BMI323(uint8_t csPin = BMI323_CS_PIN);
+    bool begin();
+    bool readSensorData();
+    void calibrate();
+    void saveCalibration();
+    void loadCalibration();
+private:
+    uint8_t _csPin;
+};
+#endif
+
+#endif // BMI323_H
