@@ -3,6 +3,11 @@
 
 #include <Arduino.h>
 
+#define IMU_UPDATE_INTERVAL_MS   10
+#define BARO_UPDATE_INTERVAL_MS  50
+#define IR_UPDATE_INTERVAL_MS    100
+
+
 //
 // ────────────────────────────────────────────────────────────────
 //   PLATFORM & I/O CONFIGURATION
@@ -82,7 +87,10 @@
 //
 
 // #define BMP390_EEPROM_SIZE        64
-#define CALIB_EEPROM_ADDR         0   // Start at address 0
+#ifndef CALIB_EEPROM_ADDR
+#define CALIB_EEPROM_ADDR 0   // Start at address 0
+#endif
+       
 
 //
 // ────────────────────────────────────────────────────────────────
@@ -96,8 +104,10 @@
 #define BMP390_FIFO_MAX_SIZE      512
 
 #include <bmp390.h> // library header first
-#undef CALIB_VALID_DURATION
+#ifndef CALIB_VALID_DURATION
 #define CALIB_VALID_DURATION 86400UL
+#endif
+
 
 #undef BMP390_EEPROM_SIZE
 #define BMP390_EEPROM_SIZE 64

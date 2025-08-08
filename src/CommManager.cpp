@@ -1,4 +1,5 @@
 #include "CommManager.h"
+#include "types.h" 
 
 CommManager::CommManager()
     : _receiver(CC2500_CS_PIN, SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN),

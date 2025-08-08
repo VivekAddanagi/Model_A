@@ -64,8 +64,17 @@ extern "C" {
 #define BMP390_CALIB_DATA_START_ADDR  0x31
 #define BMP390_CALIB_DATA_LEN         21
 #define BMP390_EEPROM_SIZE            512
-#define CALIB_EEPROM_ADDR             0
-#define CALIB_VALID_DURATION          2592000UL  // 30 days in seconds
+
+
+#ifndef CALIB_EEPROM_ADDR
+#define CALIB_EEPROM_ADDR 0
+#endif
+
+
+#ifndef CALIB_VALID_DURATION
+#define CALIB_VALID_DURATION 2592000UL  // 30 days in seconds
+#endif
+        
 
 //
 // ============================= FIFO Frame Header Flags =============================

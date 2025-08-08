@@ -2,41 +2,25 @@
 #define COMM_MANAGER_H
 
 #include <Arduino.h>
-#include "CC2500Receiver.h"
+#include "types.h"
 #include "Config.h"
-
-// Structure to hold control data from the receiver
-struct RXData {
-    int8_t yaw;
-    int8_t pitch;
-    int8_t roll;
-    uint8_t throttle;
-    uint8_t mode;
-    bool takeoff;
-    bool failsafe;
-    bool photo;
-    bool video;
-};
+#include "CC2500Receiver.h"
 
 class CommManager {
 public:
-    CommManager();
-    void begin();
-    void update();
-
-    // Returns true if a new, valid packet is available
-    bool hasValidData() const;
-
-    // Gets the latest RX control data
-    RXData getControlData() const;
-
-    // Optional: Check if receiver timeout occurred
-    bool isSignalLost(uint32_t timeoutMs = 300) const;
+    CommManager();                // Constructor
+    void begin();                  // Initialize CC2500
+    void update();                 // Read incoming data
+    bool hasValidData() const;     // Data available & valid
+    RXData getControlData() const; // Latest control input
+    bool isSignalLost(uint32_t timeoutMs) const; // Link loss detection
+    void sendData();               // Optional telemetry back
 
 private:
     CC2500Receiver _receiver;
-    RXData _latestData;
-    bool _validPacket;
+    RXData _latestData{};
+    bool _validPacket = false;
+    uint32_t _lastPacketTime = 0;
 };
 
-#endif // COMM_MANAGER_H
+#endif
