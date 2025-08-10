@@ -8,7 +8,7 @@ class ComManager {
 public:
     ComManager();
 
-    void begin();              // Initialize comms
+    bool begin();              // Initialize comms
     void update();             // Call frequently to check for new packets
     bool hasNewData() const;   // Check if last packet is valid
 

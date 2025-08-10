@@ -20,7 +20,7 @@
 // --- CC2500 RF Module ---
 #define CC2500_CS_PIN     10
 #define CC2500_GDO0_PIN   14
-#define CC2500_SPI_SPEED  4000000
+#define CC2500_SPI_SPEED  6500000
 #define CC2500_SPI_MODE   SPI_MODE0
 
 

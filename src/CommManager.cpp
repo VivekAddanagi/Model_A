@@ -4,9 +4,10 @@ ComManager::ComManager()
     : _cc2500(CC2500_CS_PIN, CC2500_GDO0_PIN, SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN),
       _newData(false) {}
 
-void ComManager::begin() {
+bool ComManager::begin() {
     Serial.println("[ComManager] Starting CC2500 receiver...");
     _cc2500.begin();
+    return true;
 }
 
 void ComManager::update() {

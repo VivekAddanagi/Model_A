@@ -1,33 +1,42 @@
-#include "bmi323.h"
+#include <Arduino.h>
 #include <SPI.h>
 #include <Preferences.h>
 #include <math.h>
-#include <SPI.h>
-
-static SPISettings bmi323_spi_settings(6500000, MSBFIRST, SPI_MODE0); // BMI323 = mode 0
+#include "bmi323.h"
 
 
-static Preferences prefs;
-static uint8_t fifo_buffer[FIFO_BUFFER_SIZE];
-
-// ----------------------------
-// Global Variables
-// ----------------------------
+// --- Global Variables ---
 
 bmi323_data_t sensor_data = {};
 GyroCalibration gyro_cal = {};
 AccelCalibration accel_cal = {};
+
 FlightMode current_mode = MODE_STABLE;
 const FlightModeConfig* current_config = nullptr;
 
 float estimated_pitch = 0.0f;
-float estimated_roll  = 0.0f;
-float estimated_yaw   = 0.0f;
+float estimated_roll = 0.0f;
+float estimated_yaw = 0.0f;
+
 unsigned long last_update_time = 0;
 
-// ----------------------------
-// SPI Communication
-// ----------------------------
+// SPI Settings
+static SPISettings bmi323_spi_settings(4000000, MSBFIRST, SPI_MODE0);
+
+// FIFO buffer constants and buffer
+#define FIFO_FRAME_SIZE 16  // 6 accel + 6 gyro + 2 temp + 2 sensor time (bytes/words as per device docs)
+
+static uint8_t fifo_buffer[FIFO_BUFFER_SIZE];
+
+// Dummy values to detect invalid FIFO frames
+#define DUMMY_ACCEL 0x7F01
+#define DUMMY_GYRO  0x7F02
+#define DUMMY_TEMP  0x8000
+
+// Preferences instance for calibration storage
+static Preferences prefs;
+
+// --- Low-level SPI Functions ---
 
 void bmi323_writeRegister(uint8_t reg, uint16_t value) {
     SPI.beginTransaction(bmi323_spi_settings);
@@ -42,49 +51,57 @@ void bmi323_writeRegister(uint8_t reg, uint16_t value) {
 uint16_t bmi323_readRegister(uint8_t reg) {
     SPI.beginTransaction(bmi323_spi_settings);
     digitalWrite(BMI323_CS_PIN, LOW);
-    SPI.transfer(reg | 0x80);           // Set MSB for read
-    uint8_t lsb = SPI.transfer(0x00);   // Read LSB first
-    uint8_t msb = SPI.transfer(0x00);   // Then MSB
+    SPI.transfer(reg | 0x80);
+    uint8_t lsb = SPI.transfer(0x00);
+    uint8_t msb = SPI.transfer(0x00);
     digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
     return (msb << 8) | lsb;
 }
 
-
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length) {
-    SPI.beginTransaction(bmi323_spi_settings); // Added to ensure SPI mode 0
+    SPI.beginTransaction(bmi323_spi_settings);
     digitalWrite(BMI323_CS_PIN, LOW);
     SPI.transfer(reg | 0x80);
     for (uint16_t i = 0; i < length; i++) {
         buffer[i] = SPI.transfer(0x00);
     }
     digitalWrite(BMI323_CS_PIN, HIGH);
-    SPI.endTransaction(); // Added to ensure bus release and mode restore
+    SPI.endTransaction();
 }
 
-
-// ----------------------------
-// Feature Engine Handling
-// ----------------------------
+// --- Extended Register Access ---
 
 static bool waitForFeatureDataReady(uint8_t max_retries = 50) {
     for (uint8_t i = 0; i < max_retries; ++i) {
-        if ((bmi323_readRegister(0x43) >> 1) & 0x01) return true;
+        uint16_t status = bmi323_readRegister(0x43); // FEATURE_DATA_STATUS
+        if ((status >> 1) & 0x01) return true;  // data_tx_ready bit
         delay(1);
     }
     return false;
 }
 
 bool bmi323_writeExtendedRegister(uint8_t extReg, uint16_t value) {
-    bmi323_writeRegister(0x41, extReg);
-    if (!waitForFeatureDataReady()) return false;
-    bmi323_writeRegister(0x42, value);
+    bmi323_writeRegister(0x41, extReg); // FEATURE_DATA_ADDR
+    if (!waitForFeatureDataReady()) {
+        Serial.println("[ERROR] Timeout waiting for FEATURE_DATA_STATUS before write.");
+        return false;
+    }
+    bmi323_writeRegister(0x42, value); // FEATURE_DATA_TX
     return true;
 }
 
-// ----------------------------
-// Sensor Initialization
-// ----------------------------
+bool bmi323_readExtendedRegister(uint8_t extReg, uint16_t* out_value) {
+    bmi323_writeRegister(0x41, extReg); // FEATURE_DATA_ADDR
+    if (!waitForFeatureDataReady()) {
+        Serial.println("[ERROR] Timeout waiting for FEATURE_DATA_STATUS before read.");
+        return false;
+    }
+    *out_value = bmi323_readRegister(0x42); // FEATURE_DATA_TX
+    return true;
+}
+
+// --- BMI323 Core Functions ---
 
 bool bmi323_init(void) {
     SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, BMI323_CS_PIN);
@@ -92,31 +109,124 @@ bool bmi323_init(void) {
     digitalWrite(BMI323_CS_PIN, HIGH);
     delay(10);
 
-    if ((bmi323_readRegister(CHIP_ID_REG) & 0xFF) != CHIP_ID_EXPECTED)
-        return false;
+    // Dummy read to activate SPI interface
+    bmi323_readRegister(CHIP_ID_REG);
+    delay(5);
 
+    uint16_t chip_id = bmi323_readRegister(CHIP_ID_REG);
+    if ((chip_id & 0xFF) != CHIP_ID_EXPECTED) {
+        Serial.printf("[BMI323] Unexpected CHIP ID: 0x%02X\n", chip_id & 0xFF);
+        return false;
+    }
+    Serial.println("[BMI323] CHIP ID OK");
+
+    // Reset sensor
     bmi323_writeRegister(CMD_REG, RESET_CMD);
     delay(200);
 
-    bmi323_writeRegister(0x12, 0x012C);  // Startup config
-    bmi323_writeRegister(0x14, 0x0001);
+    // Feature Engine Initialization for Self-Test
+    bmi323_writeRegister(0x12, 0x012C);             // FEATURE_IO2
+    bmi323_writeRegister(0x14, 0x0001);             // FEATURE_IO_STATUS
     delay(10);
-    bmi323_writeRegister(FEATURE_CTRL_REG, 0x0001);
+    bmi323_writeRegister(FEATURE_CTRL_REG, 0x0001); // Enable feature engine
     delay(5);
 
+    bool feature_ready = false;
     for (int i = 0; i < 50; ++i) {
-        if ((bmi323_readRegister(FEATURE_IO1_REG) & 0x0F) == 0x01) break;
+        uint16_t err_status = bmi323_readRegister(0x11); // FEATURE_IO1
+        if ((err_status & 0x0F) == 0x01) {
+            Serial.println("[BMI323] Feature engine initialized.");
+            feature_ready = true;
+            break;
+        }
+        delay(10);
+    }
+    if (!feature_ready) {
+        Serial.println("[ERROR] Feature engine did not initialize.");
+        return false;
+    }
+
+    uint16_t err = bmi323_readRegister(ERR_REG);
+    if (err & 0x01) {
+        Serial.println("[BMI323] Fatal error in ERR_REG.");
+        return false;
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        if (bmi323_readRegister(STATUS_REG) & (1 << 7)) break;
         delay(10);
     }
 
-    bmi323_writeRegister(ACC_CONF_REG, 0x70A9);
-    bmi323_writeRegister(GYR_CONF_REG, 0x70C9);
-
+    // Configure sensor
+    bmi323_writeRegister(ACC_CONF_REG, 0x70A9);  // ±8g, 200Hz, high perf
+    bmi323_writeRegister(GYR_CONF_REG, 0x70C9);  // ±2000 dps, 200Hz, high perf
+    Serial.println("[BMI323] Sensor configured successfully.");
     return true;
 }
 
+bool bmi323_run_selftest(void) {
+    Serial.println("[BMI323] Preparing for self-test...");
+
+    // Step 1: Disable alternate sensor configurations
+    bmi323_writeRegister(0x28, 0x0000); // ALT_ACC_CONF
+    bmi323_writeRegister(0x29, 0x0000); // ALT_GYR_CONF
+    delay(100);
+
+    // Step 2: Wait until system is in feature mode (FEATURE_IO1.state == 0b00)
+    bool system_ready = false;
+    uint16_t feature_io1 = 0;
+    for (int i = 0; i < 20; ++i) {
+        feature_io1 = bmi323_readRegister(0x11); // FEATURE_IO1
+        uint8_t state = (feature_io1 >> 11) & 0x03;
+        if (state == 0x00) {
+            system_ready = true;
+            break;
+        }
+        delay(10);
+    }
+    if (!system_ready) {
+        Serial.println("[ERROR] BMI323 not in feature mode for self-test.");
+        return false;
+    }
+
+    uint16_t io0 = bmi323_readRegister(0x10);
+    if ((io0 & 0x01) != 0) {
+        bmi323_writeRegister(0x10, io0 & ~0x01); // Disable i3c_sync_en
+    }
+
+    // Step 3: Start self-test
+     bmi323_writeRegister(CMD_REG, 0x0100);
+    delay(350); // Full duration for both acc + gyro test
+
+    // Step 4: Check if self-test completed
+    feature_io1 = bmi323_readRegister(0x11);
+    bool completed = (feature_io1 >> 4) & 0x01;
+    if (!completed) {
+        Serial.println("[ERROR] Self-test did not complete within timeout.");
+        return false;
+    }
+    Serial.println("[BMI323] Self-test completed.");
+
+    // Step 5: Check overall result
+    bool result = (feature_io1 >> 6) & 0x01;
+    Serial.printf("[BMI323] Overall self-test result: 0x%01X (1=OK, 0=Not OK)\n", result);
+
+    // Step 6: Final result check
+    uint16_t feature_io1_reg_value = bmi323_readRegister(0x11);
+    uint8_t overall_st_result = (feature_io1_reg_value >> 6) & 0x01;
+    uint8_t error_status_final = (feature_io1_reg_value >> 0) & 0x0F;
+
+    if (overall_st_result == 1 && error_status_final == 0x05) {
+        Serial.println("✅ Self-test PASSED.");
+        return true;
+    }
+
+    Serial.printf("[WARN] Self-test failed. error_status: 0x%02X\n", error_status_final);
+    return false;
+}
+
 bool bmi323_read(bmi323_data_t* data) {
-    for (uint8_t i = 0; i < 10; ++i) {
+    for (uint8_t attempt = 0; attempt < 10; ++attempt) {
         if (bmi323_readRegister(STATUS_REG) & (1 << 7)) break;
         delay(10);
     }
@@ -125,7 +235,7 @@ bool bmi323_read(bmi323_data_t* data) {
     SPI.beginTransaction(bmi323_spi_settings);
     digitalWrite(BMI323_CS_PIN, LOW);
     SPI.transfer(ACC_X_REG | 0x80);
-    buffer[0] = SPI.transfer(0x00);
+    buffer[0] = SPI.transfer(0x00); // Dummy
     for (int i = 1; i < 13; ++i) buffer[i] = SPI.transfer(0x00);
     digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
@@ -137,93 +247,153 @@ bool bmi323_read(bmi323_data_t* data) {
     data->gy = (buffer[10] << 8) | buffer[9];
     data->gz = (buffer[12] << 8) | buffer[11];
     data->temp = (int16_t)bmi323_readRegister(TEMP_REG);
+
     return true;
 }
 
-// ----------------------------
-// Orientation Estimation
-// ----------------------------
-
-void update_orientation(float ax, float ay, float az, float gx, float gy, float gz) {
-    const float alpha = 0.98f;
-    unsigned long now = millis();
-    float dt = (now - last_update_time) / 1000.0f;
-    last_update_time = now;
-
-    float acc_pitch = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0f / PI;
-    float acc_roll  = atan2(ay, az) * 180.0f / PI;
-
-    estimated_pitch = alpha * (estimated_pitch + gx * dt) + (1 - alpha) * acc_pitch;
-    estimated_roll  = alpha * (estimated_roll + gy * dt) + (1 - alpha) * acc_roll;
-    estimated_yaw  += gz * dt;
-}
-
-// ----------------------------
-// FIFO Interface
-// ----------------------------
+// --- FIFO Handling ---
 
 void bmi323_flush_fifo() {
-    bmi323_writeRegister(0x37, 0x0001);
+    bmi323_writeRegister(0x37, 0x0001);  // Trigger FIFO flush
     delay(2);
-    while ((bmi323_readRegister(0x15) & 0x07FF) != 0) delay(1);
+
+    uint16_t fifo_level;
+    do {
+        fifo_level = bmi323_readRegister(0x15) & 0x07FF; // FIFO fill level bits 0-10
+        delay(1);
+    } while (fifo_level != 0);
+
+    Serial.println("[FIFO] Flush successful.");
 }
 
 void bmi323_setup_fifo() {
+    // Set PMU to Normal Mode
     bmi323_writeRegister(0x7D, 0x0000);
     delay(10);
 
+    // Configure FIFO_CONF (0x36) to enable time, accel, gyro, temp
     uint16_t fifo_conf = bmi323_readRegister(0x36);
-    fifo_conf |= (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11);
+    fifo_conf |= (1 << 8);   // time enable
+    fifo_conf |= (1 << 9);   // accel enable
+    fifo_conf |= (1 << 10);  // gyro enable
+    fifo_conf |= (1 << 11);  // temp enable
     bmi323_writeRegister(0x36, fifo_conf);
 
+    // Set FIFO watermark to 48 words (~3 frames)
     bmi323_writeRegister(0x35, 48);
+
+    // Map FIFO watermark interrupt to INT1
     uint16_t int_map2 = bmi323_readRegister(0x3B);
-    int_map2 = (int_map2 & ~(0b11 << 12)) | (0b01 << 12);
+    int_map2 &= ~(0b11 << 12);     // Clear fifo_wm_int bits
+    int_map2 |=  (0b01 << 12);     // Map to INT1
     bmi323_writeRegister(0x3B, int_map2);
 
+    // Latch interrupt config
     uint16_t int_conf = bmi323_readRegister(0x39);
-    int_conf |= (1 << 0);
+    int_conf |= (1 << 0);          // INT_LATCH = 1
     bmi323_writeRegister(0x39, int_conf);
 
+    // Flush FIFO before starting
     bmi323_flush_fifo();
+
+    // Debug output
+    Serial.printf("FIFO_CONFIG_0: 0x%04X\n", bmi323_readRegister(0x36));
+    Serial.printf("FIFO_CONFIG_1: 0x%04X\n", bmi323_readRegister(0x37));
+    Serial.printf("FIFO_CTRL:     0x%04X\n", bmi323_readRegister(0x3A));
+    Serial.printf("FIFO_INT_0:    0x%04X\n", bmi323_readRegister(0x3B));
 }
 
 void bmi323_read_fifo() {
     uint16_t fifo_fill_words = bmi323_readRegister(0x15) & 0x07FF;
     if (fifo_fill_words == 0) return;
 
-    int bytes_to_read = min(fifo_fill_words * 2, FIFO_BUFFER_SIZE - 1);
+    int bytes_to_read = fifo_fill_words * 2;
+    if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
+
     uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
-    bmi323_burstRead(0x16, raw, bytes_to_read + 1);
-    memcpy(fifo_buffer, raw + 1, bytes_to_read);
+    bmi323_burstRead(0x16, raw, bytes_to_read + 1);  // First byte dummy
+    memcpy(fifo_buffer, raw + 1, bytes_to_read);     // Skip dummy byte
 
     int index = 0;
     while (index + FIFO_FRAME_SIZE <= bytes_to_read) {
         int16_t ax = (fifo_buffer[index + 1] << 8) | fifo_buffer[index + 0];
         int16_t ay = (fifo_buffer[index + 3] << 8) | fifo_buffer[index + 2];
         int16_t az = (fifo_buffer[index + 5] << 8) | fifo_buffer[index + 4];
+
         int16_t gx = (fifo_buffer[index + 7] << 8) | fifo_buffer[index + 6];
         int16_t gy = (fifo_buffer[index + 9] << 8) | fifo_buffer[index + 8];
         int16_t gz = (fifo_buffer[index +11] << 8) | fifo_buffer[index +10];
+
+        int16_t temp_raw = (fifo_buffer[index +13] << 8) | fifo_buffer[index +12];
+
         index += FIFO_FRAME_SIZE;
 
-        if (ax == DUMMY_ACCEL || gx == DUMMY_GYRO) continue;
+        if (ax == DUMMY_ACCEL || gx == DUMMY_GYRO || temp_raw == DUMMY_TEMP)
+            continue;
 
         float ax_g = ax / 4096.0f;
         float ay_g = ay / 4096.0f;
         float az_g = az / 4096.0f - accel_cal.z_offset;
+
         float gx_dps = gx / 16.384f - gyro_cal.bias_x;
         float gy_dps = gy / 16.384f - gyro_cal.bias_y;
         float gz_dps = gz / 16.384f - gyro_cal.bias_z;
 
         update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
+
+        if (current_config != nullptr) {
+            if (current_config->stabilize_pitch) {
+                float pitch_error = 0.0f - estimated_pitch;
+                float pitch_correction = pitch_error * current_config->pitch_gain;
+                Serial.printf("Pitch correction: %.2f\n", pitch_correction);
+            }
+            if (current_config->stabilize_roll) {
+                float roll_error = 0.0f - estimated_roll;
+                float roll_correction = roll_error * current_config->roll_gain;
+                Serial.printf("Roll correction: %.2f\n", roll_correction);
+            }
+            if (current_config->stabilize_yaw) {
+                float yaw_error = 0.0f - estimated_yaw;
+                float yaw_correction = yaw_error * current_config->yaw_gain;
+                Serial.printf("Yaw correction: %.2f\n", yaw_correction);
+            }
+        }
+
+        float temp_c = temp_raw / 512.0f + 23.0f;
+        temp_c = constrain(temp_c, -40.0f, 85.0f);
+
+        Serial.printf("TEMP_RAW: %d | ", temp_raw);
+        Serial.printf("ACC[g]: X=%.2f Y=%.2f Z=%.2f | ", ax_g, ay_g, az_g);
+        Serial.printf("GYRO[dps]: X=%.2f Y=%.2f Z=%.2f | ", gx_dps, gy_dps, gz_dps);
+        Serial.printf("TEMP: %.2f\n", temp_c);
     }
 }
 
+// --- Orientation estimation ---
 
-// ----------------------------// Calibration Handling
-// ----------------------------     
+bool bmi323_set_axis_remap(uint8_t config) {
+    bmi323_writeRegister(0x03, config);         // EXT.AXIS_MAP_1
+    bmi323_writeRegister(CMD_REG, 0x0300);      // Trigger remap
+    delay(10);
+    return true;
+}
 
+void update_orientation(float ax, float ay, float az, float gx, float gy, float gz) {
+    const float alpha = 0.98f;
+    unsigned long now = millis();
+    float dt = (now - last_update_time) / 1000.0f;
+    if (dt <= 0) dt = 0.01f; // Prevent zero or negative dt on first run
+    last_update_time = now;
+
+    float acc_pitch = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0f / PI;
+    float acc_roll = atan2(ay, az) * 180.0f / PI;
+
+    estimated_pitch = alpha * (estimated_pitch + gx * dt) + (1 - alpha) * acc_pitch;
+    estimated_roll = alpha * (estimated_roll + gy * dt) + (1 - alpha) * acc_roll;
+    estimated_yaw += gz * dt;
+}
+
+// --- Calibration functions ---
 
 #define GYRO_SAMPLES 200
 #define ACCEL_SAMPLES 100
@@ -237,28 +407,24 @@ void wait_for_user_confirmation() {
 }
 
 bool bmi323_quick_gyro_calibrate(GyroCalibration* cal) {
-    // 1. Ensure sensor is stable
-    float temp_x = 0, temp_y = 0, temp_z = 0;
-
-       // --- Ignore first 5 readings ---
+    // Ignore first 5 readings
     for (int i = 0; i < 5; i++) {
         bmi323_data_t dummy;
         bmi323_read(&dummy);
         delay(10);
     }
-    
-    // 2. Collect samples
+
+    float temp_x = 0, temp_y = 0, temp_z = 0;
     for(int i=0; i<GYRO_SAMPLES; i++) {
         bmi323_data_t data;
         if(!bmi323_read(&data)) return false;
-        
+
         temp_x += data.gx;
         temp_y += data.gy;
         temp_z += data.gz;
         delay(10); // 100Hz sampling
     }
 
-    // 3. Calculate biases
     cal->bias_x = temp_x / GYRO_SAMPLES;
     cal->bias_y = temp_y / GYRO_SAMPLES;
     cal->bias_z = temp_z / GYRO_SAMPLES;
@@ -267,26 +433,22 @@ bool bmi323_quick_gyro_calibrate(GyroCalibration* cal) {
 }
 
 bool bmi323_z_accel_calibrate(AccelCalibration* cal) {
-    // 1. Assume level surface (Z-axis should be +1g)
-    float temp_z = 0;
-
-    // --- Ignore first 5 readings ---
+    // Ignore first 5 readings
     for (int i = 0; i < 5; i++) {
         bmi323_data_t dummy;
         bmi323_read(&dummy);
         delay(20);
     }
-    
-    // 2. Collect samples
+
+    float temp_z = 0;
     for(int i=0; i<ACCEL_SAMPLES; i++) {
         bmi323_data_t data;
         if(!bmi323_read(&data)) return false;
-        
+
         temp_z += data.az / 4096.0f; // Convert to g
         delay(20);
     }
 
-    // 3. Calculate offset from ideal 1g
     cal->z_offset = (temp_z / ACCEL_SAMPLES) - 1.0f;
     return true;
 }
@@ -310,32 +472,26 @@ bool load_calibration_from_flash(GyroCalibration& gyro_cal, AccelCalibration& ac
     prefs.begin("bmi323", true);  // Read-only
     if (!prefs.isKey("gyro_x")) {
         prefs.end();
-        Serial.println("[FLASH] No calibration found.");
+        Serial.println("[CAL] No calibration data found");
         return false;
     }
-
     gyro_cal.bias_x = prefs.getFloat("gyro_x");
     gyro_cal.bias_y = prefs.getFloat("gyro_y");
     gyro_cal.bias_z = prefs.getFloat("gyro_z");
     accel_cal.z_offset = prefs.getFloat("accel_z");
-
     prefs.end();
-
-    Serial.println("[FLASH] Calibration loaded from NVS:");
-    Serial.printf("  Gyro Bias: X=%.2f Y=%.2f Z=%.2f\n", gyro_cal.bias_x, gyro_cal.bias_y, gyro_cal.bias_z);
-    Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.z_offset);
     return true;
 }
 
 void save_calibration_to_flash(const GyroCalibration& gyro_cal, const AccelCalibration& accel_cal) {
-    prefs.begin("bmi323", false);  // Read-write
+    prefs.begin("bmi323", false);
     prefs.putFloat("gyro_x", gyro_cal.bias_x);
     prefs.putFloat("gyro_y", gyro_cal.bias_y);
     prefs.putFloat("gyro_z", gyro_cal.bias_z);
     prefs.putFloat("accel_z", accel_cal.z_offset);
     prefs.end();
-    Serial.println("[FLASH] Calibration saved to NVS.");
 }
+
 
 void clear_calibration_flash() {
     prefs.begin("bmi323", false);
@@ -384,3 +540,30 @@ void print_calibration_info() {
                   gyro_cal.bias_x, gyro_cal.bias_y, gyro_cal.bias_z);
     Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.z_offset);
 }
+
+
+// --- Flight Mode Setup ---
+
+FlightMode select_flight_mode() {
+    Serial.println("Select Flight Mode:");
+    Serial.println("  1 - Stable (Leveling)");
+    Serial.println("  2 - Hover (Altitude Hold)");
+    Serial.println("  3 - Cruise (Forward Flight)");
+    Serial.print("Enter choice (1-3): ");
+
+    while (true) {
+        if (Serial.available()) {
+            char ch = Serial.read();
+            switch (ch) {
+                case '1': Serial.println("Selected: Stable Mode"); return MODE_STABLE;
+                case '2': Serial.println("Selected: Hover Mode");  return MODE_HOVER;
+                case '3': Serial.println("Selected: Cruise Mode"); return MODE_CRUISE;
+                default:
+                    Serial.println("Invalid input. Enter 1, 2 or 3:");
+            }
+        }
+        delay(10);
+    }
+}
+// -- end of merged code --
+
