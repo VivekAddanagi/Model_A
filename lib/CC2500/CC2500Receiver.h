@@ -107,7 +107,7 @@ private:
     void _debugPrintPacket(const uint8_t* data, uint8_t len);
     uint8_t _readMARCState();
     void _printConfigSummary();
-
+    
     // SPI helpers
     void _select();
     void _deselect();

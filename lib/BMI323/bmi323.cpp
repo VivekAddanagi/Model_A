@@ -49,13 +49,16 @@ uint16_t bmi323_readRegister(uint8_t reg) {
 }
 
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length) {
+    SPI.beginTransaction(bmi323_spi_settings); // Added to ensure SPI mode 0
     digitalWrite(BMI323_CS_PIN, LOW);
     SPI.transfer(reg | 0x80);
     for (uint16_t i = 0; i < length; i++) {
         buffer[i] = SPI.transfer(0x00);
     }
     digitalWrite(BMI323_CS_PIN, HIGH);
+    SPI.endTransaction(); // Added to ensure bus release and mode restore
 }
+
 
 // ----------------------------
 // Feature Engine Handling

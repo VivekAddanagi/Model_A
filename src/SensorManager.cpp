@@ -1,4 +1,4 @@
-// src/SensorManager.cpp
+/*// src/SensorManager.cpp
 #include "SensorManager.h"
 #include "Config.h"
 #include "bmi323.h"
@@ -231,3 +231,4 @@ bool SensorManager::isObstacleNear(Direction dir) const {
     // Note: IR returns ADC counts — higher means closer in your code
     return val > IR_DANGER_THRESHOLD;
 }
+*/
