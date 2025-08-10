@@ -31,11 +31,11 @@
 
 // =============================== SPI Settings ===============================
 #ifndef CC2500_SPI_SPEED
-#define CC2500_SPI_SPEED 6500000
+#define CC2500_SPI_SPEED 4000000
 #endif
 
 #ifndef CC2500_SPI_MODE
-#define CC2500_SPI_MODE SPI_MODE3
+#define CC2500_SPI_MODE SPI_MODE0
 #endif
 
 // =============================== Packet Structure ===============================

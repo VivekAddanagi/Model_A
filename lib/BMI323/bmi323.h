@@ -11,7 +11,7 @@
 // Chip Select pin from Config.h (default fallback)
 // ---------------------------------------------------
 #ifndef BMI323_CS_PIN
-#define BMI323_CS_PIN 10
+#define BMI323_CS_PIN 8
 #endif
 
 // SPI pins (can also be overridden in Config.h)

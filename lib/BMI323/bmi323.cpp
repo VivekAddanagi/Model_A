@@ -2,8 +2,11 @@
 #include <SPI.h>
 #include <Preferences.h>
 #include <math.h>
+#include <SPI.h>
 
-static SPISettings bmi323_spi_settings(6500000, MSBFIRST, SPI_MODE0);
+static SPISettings bmi323_spi_settings(6500000, MSBFIRST, SPI_MODE0); // BMI323 = mode 0
+
+
 static Preferences prefs;
 static uint8_t fifo_buffer[FIFO_BUFFER_SIZE];
 
@@ -39,14 +42,14 @@ void bmi323_writeRegister(uint8_t reg, uint16_t value) {
 uint16_t bmi323_readRegister(uint8_t reg) {
     SPI.beginTransaction(bmi323_spi_settings);
     digitalWrite(BMI323_CS_PIN, LOW);
-    SPI.transfer(reg | 0x80);
-    SPI.transfer(0x00);
-    uint8_t lsb = SPI.transfer(0x00);
-    uint8_t msb = SPI.transfer(0x00);
+    SPI.transfer(reg | 0x80);           // Set MSB for read
+    uint8_t lsb = SPI.transfer(0x00);   // Read LSB first
+    uint8_t msb = SPI.transfer(0x00);   // Then MSB
     digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
     return (msb << 8) | lsb;
 }
+
 
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length) {
     SPI.beginTransaction(bmi323_spi_settings); // Added to ensure SPI mode 0

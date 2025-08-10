@@ -5,6 +5,7 @@ ComManager com;
 
 void setup() {
     Serial.begin(115200);
+    delay(5000); // Allow time for Serial to initialize
     com.begin();
 }
 
