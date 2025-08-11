@@ -5,49 +5,47 @@
 ComManager com;
 SensorManager sensors;
 
+// Print interval for BMP390 telemetry
+static const uint32_t BMP_PRINT_INTERVAL_MS = 200; // 5 Hz
+
 void setup() {
-    Serial.begin(115200);
-    while (!Serial);
-    delay(5000); // Allow time for Serial to initialize
-    
-    // Initialize both systems
+    Serial.begin(DEBUG_SERIAL_BAUD);
+    while (!Serial) { delay(10); }
+    delay(500); // Allow time for Serial to initialize
 
+    Serial.println("[SYSTEM] Startup...");
 
-   if(!com.begin()) {  // Modify your ComManager::begin() to return bool
+    // Initialize communications (radio)
+    if(!com.begin()) {  // Modify your ComManager::begin() to return bool
         Serial.println("[ERROR] Failed to initialize radio!");
-     while(1); // Halt if radio fails
+        while(1) { delay(100); } // Halt if radio fails
     }
 
+    // Initialize sensors; this now also initializes BMP390 (continuous FIFO mode)
     if(!sensors.begin()) {
         Serial.println("[ERROR] Failed to initialize sensors!");
-        while(1); // Halt if sensors fail
+        while(1) { delay(100); } // Halt if sensors fail
     }
-    
-    
-    
+
     Serial.println("[SYSTEM] Initialization complete");
 }
 
 void loop() {
+    static uint32_t lastBmpPrint = 0;
+    uint32_t now = millis();
+
     // Update both systems
-    //com.update();
-   
-     // Handle incoming radio data
-    //if (com.hasNewData()) {
-      //  Serial.printf("[RADIO] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d\n",
-        //             com.yaw, com.pitch, com.roll, com.throttle, com.mode);
-    //}
-    // delay(10); // Small delay to avoid overwhelming the system
-
+    com.update();
+    delay(10); // Small delay to avoid flooding Serial
     sensors.update();
-   
-    // Print sensor data periodically
-    //static uint32_t lastSensorPrint = 0;
-    //if(millis() - lastSensorPrint > 100) { // 10Hz update
-        //sensors.printBMI323Data();
-        //lastSensorPrint = millis();
-   // }
 
-    // Reduced delay for better responsiveness
+    // Print BMI323 & BMP390 data periodically for logging and debugging
+    if (now - lastBmpPrint >= BMP_PRINT_INTERVAL_MS) {
+        lastBmpPrint = now;
+        sensors.printBMI323Data();
+        sensors.printBMP390Data();
+    }
+
+    // Small delay to avoid hammering CPU (control loops may override)
     delay(10);
 }
