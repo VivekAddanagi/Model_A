@@ -1,4 +1,7 @@
 #include "SensorManager.h"
+#include "Config.h"
+#include "bmi323.h"
+
 
 SensorManager::SensorManager() {}
 

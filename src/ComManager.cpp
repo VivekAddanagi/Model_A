@@ -1,4 +1,4 @@
-#include "CommManager.h"
+#include "ComManager.h"
 
 ComManager::ComManager() 
     : _cc2500(CC2500_CS_PIN, CC2500_GDO0_PIN, SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN),

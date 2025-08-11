@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "CommManager.h"
+#include "ComManager.h"
 #include "SensorManager.h"
 
 ComManager com;
@@ -15,7 +15,7 @@ void setup() {
 
    if(!com.begin()) {  // Modify your ComManager::begin() to return bool
         Serial.println("[ERROR] Failed to initialize radio!");
-       while(1); // Halt if radio fails
+     while(1); // Halt if radio fails
     }
 
     if(!sensors.begin()) {
