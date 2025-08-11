@@ -15,11 +15,5 @@ public:
     void validate_config();
 
 private:
-    FlightMode current_mode;
-    FlightModeConfig* current_config;  // Pointer to current mode config
 
-    // Mode configurations
-    FlightModeConfig stable_config;
-    FlightModeConfig hover_config;
-    FlightModeConfig cruise_config;
 };

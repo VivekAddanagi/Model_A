@@ -30,21 +30,23 @@ void setup() {
 
 void loop() {
     // Update both systems
+    //com.update();
+   
+     // Handle incoming radio data
+    //if (com.hasNewData()) {
+      //  Serial.printf("[RADIO] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d\n",
+        //             com.yaw, com.pitch, com.roll, com.throttle, com.mode);
+    //}
+    // delay(10); // Small delay to avoid overwhelming the system
+
     sensors.update();
-    com.update();
-
-    // Handle incoming radio data
-    if (com.hasNewData()) {
-        Serial.printf("[RADIO] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d\n",
-                     com.yaw, com.pitch, com.roll, com.throttle, com.mode);
-    }
-
+   
     // Print sensor data periodically
-    static uint32_t lastSensorPrint = 0;
-    if(millis() - lastSensorPrint > 100) { // 10Hz update
-        sensors.printBMI323Data();
-        lastSensorPrint = millis();
-    }
+    //static uint32_t lastSensorPrint = 0;
+    //if(millis() - lastSensorPrint > 100) { // 10Hz update
+        //sensors.printBMI323Data();
+        //lastSensorPrint = millis();
+   // }
 
     // Reduced delay for better responsiveness
     delay(10);

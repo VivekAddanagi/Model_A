@@ -310,6 +310,8 @@ void update_orientation(float ax, float ay, float az, float gx, float gy, float 
 #define FIFO_FRAME_SIZE 16  // 6 (accel) + 6 (gyro) + 2 (temp) + 2 (sensor time)
 #define FIFO_BUFFER_SIZE 256
 static uint8_t fifo_buffer[FIFO_BUFFER_SIZE];
+// At top of the file
+static uint8_t raw_buffer[FIFO_BUFFER_SIZE + 1];
 
 // Dummy value signatures
 #define DUMMY_ACCEL 0x7F01
@@ -369,7 +371,18 @@ void bmi323_setup_fifo() {
 }
 
 void bmi323_read_fifo() {
+
+        Serial.println("[DEBUG] bmi323_read_fifo() start");
+
+    // Print a few sanity checks
+    Serial.printf("[DEBUG] current_config ptr = %p\n", (void*)current_config);
+    Serial.printf("[DEBUG] &stable_config = %p, &hover_config = %p, &cruise_config = %p\n",
+                  (void*)&stable_config, (void*)&hover_config, (void*)&cruise_config);
+    Serial.printf("[DEBUG] sizeof(raw) estimate = %d\n", FIFO_BUFFER_SIZE+1);
+
     uint16_t fifo_fill_words = bmi323_readRegister(0x15) & 0x07FF;
+    Serial.printf("[DEBUG] fifo_fill_words = %u\n", fifo_fill_words);
+    
     if (fifo_fill_words == 0) return;
 
     int bytes_to_read = fifo_fill_words * 2;

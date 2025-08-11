@@ -1,6 +1,8 @@
 #include "SensorManager.h"
 #include "Config.h"
-#include "bmi323.h"
+
+
+
 
 
 SensorManager::SensorManager() {}
@@ -49,9 +51,11 @@ bool SensorManager::begin() {
 }
 
 void SensorManager::update() {
+    Serial.println("[DEBUG] Enter update()");
     bmi323_read_fifo();
-    // Could add BMP390, CC2500 polling here later
+    Serial.println("[DEBUG] Exit update()");
 }
+
 
 void SensorManager::calibrateBMI323(bool force) {
     if (force) {
