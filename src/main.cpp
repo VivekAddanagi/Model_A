@@ -8,6 +8,8 @@ FlightMode select_mode();
 void print_mode_configuration(FlightMode mode);
 void apply_bmi323_mode(FlightMode mode);
 void apply_bmp390_mode(FlightMode mode);
+// Forward declare the manager (from calibration_sequence.cpp)
+void run_calibration_sequence_startup();
 
 // === Global ComManager instance ===
 ComManager comManager;
@@ -35,6 +37,13 @@ void setup() {
 
     // Print the applied configuration
     print_mode_configuration(selected);
+
+        // Run unified calibration decision & flow
+    run_calibration_sequence_startup();
+
+    // Print the applied configuration
+    print_mode_configuration(selected);
+
 
     Serial.println(F("Flight mode configuration applied."));
 }
