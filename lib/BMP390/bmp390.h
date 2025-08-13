@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <EEPROM.h>
+
 #include <stdint.h>
 #include "Config.h" // Central project config
 
@@ -71,15 +71,6 @@ extern "C" {
 #define BMP390_CALIB_DATA_START_ADDR  0x31
 #define BMP390_CALIB_DATA_LEN         21
 
-// EEPROM calibration storage address (Config.h overrides)
-#ifndef CALIB_EEPROM_ADDR
-#define CALIB_EEPROM_ADDR 0
-#endif
-
-// EEPROM size
-#ifndef BMP390_EEPROM_SIZE
-#define BMP390_EEPROM_SIZE 64
-#endif
 
 // Calibration data validity duration (seconds)
 #ifndef CALIB_VALID_DURATION

@@ -1,14 +1,17 @@
-#include <EEPROM.h>
+#include <Preferences.h>
 #include <time.h>
 #include "bmp390.h"
 
-// Global variable to hold pressure offset loaded from EEPROM or calibration
+// Global variable to hold pressure offset loaded from NVS or calibration
 float pressure_offset = 0.0f;
 
-/**
- * Calibrates the pressure sensor by taking multiple readings and storing the average
- * pressure and temperature in EEPROM with a timestamp.
- */
+// NVS namespace and keys
+#define BMP390_PREFS_NS       "bmp390"
+#define BMP390_TS_KEY         "ts"
+#define BMP390_PRES_KEY       "pres"
+#define BMP390_TEMP_KEY       "temp"
+
+// ==================== Calibration ====================
 int bmp390_calibrate_offset() {
     Serial.println("[CALIB] Starting zero-offset calibration...");
     delay(1000);  // Let sensor settle after power-up or reset
@@ -36,63 +39,57 @@ int bmp390_calibrate_offset() {
     float avg_p = sum_p / valid_samples;
     float avg_t = sum_t / valid_samples;
 
-    if (!EEPROM.begin(BMP390_EEPROM_SIZE)) {
-        Serial.println("[ERROR] EEPROM.begin() failed.");
-        return -1;
-    }
-
     uint32_t timestamp = (uint32_t)time(NULL);
     if (timestamp == 0) timestamp = 1;  // Fallback if RTC not set
 
-    BMP390_CalibrationData calib = {
-        .pressure_offset = avg_p,
-        .calibration_temperature = avg_t,
-        .timestamp = timestamp
-    };
-
-    EEPROM.put(CALIB_EEPROM_ADDR, calib);
-    if (!EEPROM.commit()) {
-        Serial.println("[ERROR] EEPROM commit failed.");
-        EEPROM.end();
+    // Save to NVS
+    Preferences prefs;
+    if (!prefs.begin(BMP390_PREFS_NS, false)) {
+        Serial.println("[ERROR] Failed to open NVS for BMP390 calibration.");
         return -1;
     }
 
-    EEPROM.end();
+    prefs.putUInt(BMP390_TS_KEY, timestamp);
+    prefs.putFloat(BMP390_PRES_KEY, avg_p);
+    prefs.putFloat(BMP390_TEMP_KEY, avg_t);
+    prefs.end();
 
     pressure_offset = avg_p;
     Serial.printf("[CALIB] Calibration complete: P=%.2f Pa | T=%.2f °C\n", avg_p, avg_t);
     return 0;
 }
 
-/**
- * Loads pressure calibration data from EEPROM and checks if it is still valid.
- * If valid, the pressure offset is applied.
- */
+// ==================== Apply Saved Calibration ====================
 int bmp390_apply_calibration() {
-    if (!EEPROM.begin(BMP390_EEPROM_SIZE)) {
-        Serial.println("[ERROR] EEPROM.begin() failed.");
+    Preferences prefs;
+    if (!prefs.begin(BMP390_PREFS_NS, true)) {
+        Serial.println("[ERROR] Failed to open NVS for reading BMP390 calibration.");
         return -1;
     }
 
-    BMP390_CalibrationData calib;
-    EEPROM.get(CALIB_EEPROM_ADDR, calib);
-    EEPROM.end();
+    if (!prefs.isKey(BMP390_TS_KEY)) {
+        Serial.println("[CALIB] No saved BMP390 calibration found.");
+        prefs.end();
+        return -1;
+    }
+
+    uint32_t timestamp = prefs.getUInt(BMP390_TS_KEY, 0);
+    float saved_p = prefs.getFloat(BMP390_PRES_KEY, 0.0f);
+    float saved_t = prefs.getFloat(BMP390_TEMP_KEY, 0.0f);
+    prefs.end();
 
     uint32_t now = (uint32_t)time(NULL);
-    if (now == 0 || (now - calib.timestamp > CALIB_VALID_DURATION)) {
+    if (now == 0 || (now - timestamp > CALIB_VALID_DURATION)) {
         Serial.println("[CALIB] Calibration data is invalid or expired.");
         return -1;
     }
 
-    pressure_offset = calib.pressure_offset;
-    Serial.printf("[CALIB] Loaded from EEPROM: P=%.2f Pa | T=%.2f °C\n",
-                  calib.pressure_offset, calib.calibration_temperature);
+    pressure_offset = saved_p;
+    Serial.printf("[CALIB] Loaded from NVS: P=%.2f Pa | T=%.2f °C\n", saved_p, saved_t);
     return 0;
 }
 
-/**
- * Returns the pressure offset from calibration. This is used to compute relative altitude.
- */
+// ==================== Getter ====================
 float bmp390_get_ground_pressure() {
     return pressure_offset;
 }

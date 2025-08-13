@@ -42,7 +42,7 @@ void setup() {
     run_calibration_sequence_startup();
 
     // Print the applied configuration
-    print_mode_configuration(selected);
+   // print_mode_configuration(selected);
 
 
     Serial.println(F("Flight mode configuration applied."));
