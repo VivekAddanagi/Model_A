@@ -50,7 +50,7 @@ void setup() {
 
 // === Loop ===
 void loop() {
-    comManager.update(); // Update communication manager
+    //comManager.update(); // Update communication manager
 
     // Main drone operation loop
 }

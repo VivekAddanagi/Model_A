@@ -255,6 +255,19 @@ void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length) {
     digitalWrite(BMI323_CS_PIN, HIGH);
 }
 
+bool bmi323_read_accel(float* ax, float* ay, float* az) {
+    bmi323_data_t data;
+    if (!bmi323_read(&data)) {
+        return false;
+    }
+    // Convert raw values to g
+    *ax = data.ax / 4096.0f; // adjust divisor per BMI323 config
+    *ay = data.ay / 4096.0f;
+    *az = data.az / 4096.0f;
+    return true;
+}
+
+
 
 
 // ------------------------
@@ -415,7 +428,7 @@ void bmi323_read_fifo() {
         // Convert and apply calibration
         float ax_g = ax / 4096.0f;
         float ay_g = ay / 4096.0f;
-        float az_g = az / 4096.0f - accel_cal.z_offset;
+        float az_g = az / 4096.0f - accel_cal.bias_z;
 
         float gx_dps = gx / 16.384f - gyro_cal.bias_x;
         float gy_dps = gy / 16.384f - gyro_cal.bias_y;
@@ -506,30 +519,28 @@ bool bmi323_quick_gyro_calibrate(GyroCalibration* cal) {
     return true;
 }
 
-bool bmi323_z_accel_calibrate(AccelCalibration* cal) {
-    // 1. Assume level surface (Z-axis should be +1g)
-    float temp_z = 0;
+bool bmi323_accel_calibrate_all(AccelCalibration* cal) {
+    float sum_x = 0, sum_y = 0, sum_z = 0;
+    const int samples = 500;
 
-    // --- Ignore first 5 readings ---
-    for (int i = 0; i < 5; i++) {
-        bmi323_data_t dummy;
-        bmi323_read(&dummy);
-        delay(20);
-    }
-    
-    // 2. Collect samples
-    for(int i=0; i<ACCEL_SAMPLES; i++) {
-        bmi323_data_t data;
-        if(!bmi323_read(&data)) return false;
-        
-        temp_z += data.az / 4096.0f; // Convert to g
-        delay(20);
+    for (int i = 0; i < samples; i++) {
+        float ax, ay, az;
+        if (!bmi323_read_accel(&ax, &ay, &az)) {
+            return false;
+        }
+        sum_x += ax;
+        sum_y += ay;
+        sum_z += az;
+        delay(5);
     }
 
-    // 3. Calculate offset from ideal 1g
-    cal->z_offset = (temp_z / ACCEL_SAMPLES) - 1.0f;
+    cal->bias_x = sum_x / samples;
+    cal->bias_y = sum_y / samples;
+    cal->bias_z = sum_z / samples;
+
     return true;
 }
+
 
 void apply_gyro_calibration(const GyroCalibration* cal) {
     int16_t ox = (int16_t)(cal->bias_x * 16.384f);
@@ -542,7 +553,7 @@ void apply_gyro_calibration(const GyroCalibration* cal) {
 }
 
 void apply_accel_calibration(const AccelCalibration* cal) {
-    int16_t oz = (int16_t)(cal->z_offset / 0.00003052f); // offset in LSBs
+    int16_t oz = (int16_t)(cal->bias_z / 0.00003052f); // offset in LSBs
     bmi323_writeRegister(0x64, oz); // ACC_DP_OFF_Z
 }
 
@@ -557,13 +568,13 @@ bool load_calibration_from_flash(GyroCalibration& gyro_cal, AccelCalibration& ac
     gyro_cal.bias_x = prefs.getFloat("gyro_x");
     gyro_cal.bias_y = prefs.getFloat("gyro_y");
     gyro_cal.bias_z = prefs.getFloat("gyro_z");
-    accel_cal.z_offset = prefs.getFloat("accel_z");
+    accel_cal.bias_z = prefs.getFloat("accel_z");
 
     prefs.end();
 
     Serial.println("[FLASH] Calibration loaded from NVS:");
     Serial.printf("  Gyro Bias: X=%.2f Y=%.2f Z=%.2f\n", gyro_cal.bias_x, gyro_cal.bias_y, gyro_cal.bias_z);
-    Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.z_offset);
+    Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.bias_z);
     return true;
 }
 
@@ -572,7 +583,7 @@ void save_calibration_to_flash(const GyroCalibration& gyro_cal, const AccelCalib
     prefs.putFloat("gyro_x", gyro_cal.bias_x);
     prefs.putFloat("gyro_y", gyro_cal.bias_y);
     prefs.putFloat("gyro_z", gyro_cal.bias_z);
-    prefs.putFloat("accel_z", accel_cal.z_offset);
+    prefs.putFloat("accel_z", accel_cal.bias_z);
     prefs.end();
     Serial.println("[FLASH] Calibration saved to NVS.");
 }
@@ -606,8 +617,9 @@ void perform_calibration_sequence() {
         while (1);
     }
 
-    if (!bmi323_z_accel_calibrate(&accel_cal)) {
-        Serial.println("[ERROR] Accel Z calibration failed.");
+    if (!bmi323_accel_calibrate_all(&accel_cal)) {
+ 
+        Serial.println("[ERROR] Accel  calibration failed.");
         while (1);
     }
 
@@ -622,5 +634,5 @@ void print_calibration_info() {
     Serial.println("Calibration Results:");
     Serial.printf("  Gyro Bias: X=%.2f Y=%.2f Z=%.2f\n",
                   gyro_cal.bias_x, gyro_cal.bias_y, gyro_cal.bias_z);
-    Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.z_offset);
+    Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.bias_z);
 }

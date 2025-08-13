@@ -56,7 +56,9 @@ typedef struct {
 } GyroCalibration;
 
 typedef struct {
-    float z_offset;
+    float bias_x;
+    float bias_y;
+    float bias_z;
 } AccelCalibration;
 
 // Global calibration state (defined in main.cpp)
@@ -158,7 +160,7 @@ void configure_sensor_for_calibration();
 void configure_sensor_for_flight();
 // Public functions
 bool bmi323_quick_gyro_calibrate(GyroCalibration* cal);
-bool bmi323_z_accel_calibrate(AccelCalibration* cal);
+bool bmi323_accel_calibrate_all(AccelCalibration* cal) ;
 void apply_gyro_calibration(const GyroCalibration* cal);
 void apply_accel_calibration(const AccelCalibration* cal);
 bool load_calibration_from_flash(GyroCalibration& gyro_cal, AccelCalibration& accel_cal);
@@ -173,6 +175,7 @@ void bmi323_setup_fifo(void);
 void bmi323_read_fifo(void);
 void update_orientation(float ax, float ay, float az, float gx, float gy ,float gz);
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length);
+bool bmi323_read_accel(float* ax, float* ay, float* az);
 
 #ifdef __cplusplus
 }
