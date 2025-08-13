@@ -111,21 +111,30 @@ static bool prompt_user_recalibration(uint32_t bmi_age, uint32_t bmp_age, bool b
     Serial.println(F("=== Calibration Decision ==="));
     Serial.printf("BMI323 age: %lus (%s)\n", (unsigned long)bmi_age, bmi_stale ? "stale" : "ok");
     Serial.printf("BMP390 age: %lus (%s)\n", (unsigned long)bmp_age, bmp_stale ? "stale" : "ok");
-    Serial.println(F("Press 'c' to recalibrate, 'u' to use saved, or wait 5s (stale => auto-calibrate)."));
+
+    if (bmi_stale || bmp_stale) {
+        Serial.println(F("Press 'c' to recalibrate, 'u' to force use saved, or wait 5s (default: auto-calibrate if stale)."));
+    } else {
+        Serial.println(F("Press 'c' to recalibrate, 'u' to use saved, or wait 5s (default: use saved)."));
+    }
 
     uint32_t start = millis();
     while (millis() - start < 5000) {
         if (Serial.available()) {
             char ch = Serial.read();
-            if (ch == 'c' || ch == 'C') return true;
-            if (ch == 'u' || ch == 'U') return false;
+            if (ch == 'c' || ch == 'C') return true;   // user wants calibration
+            if (ch == 'u' || ch == 'U') return false;  // user wants saved (even if stale)
         }
         delay(10);
     }
 
-    // Auto-decision: if either is stale, recalibrate; else use saved
-    return (bmi_stale || bmp_stale);
+    // Timeout behavior
+    if (bmi_stale || bmp_stale) {
+        return true;  // auto-calibrate if stale
+    }
+    return false;     // auto-use saved if fresh
 }
+
 
 static void apply_all_if_available() {
     // BMP390 apply: uses EEPROM validity check inside
@@ -184,47 +193,47 @@ static bool recalibrate_all_and_save() {
 // ===================== Public entry point =====================
 // Call from setup() after sensor init.
 void run_calibration_sequence_startup() {
-    // Ages
     uint32_t now = now_secs();
 
-    // BMI323 age
-    uint32_t bmi_ts = bmi323_read_timestamp();
-    uint32_t bmi_age = (bmi_ts > 0 && now >= bmi_ts) ? (now - bmi_ts) : UINT32_MAX;
+    // Always calibrate BMI323 — no timestamp check
+    Serial.println(F("[BMI323] Always calibrating at startup..."));
+    wait_for_user_confirmation();
+    if (!bmi323_quick_gyro_calibrate(&gyro_cal)) {
+        Serial.println(F("[ERROR] BMI323 gyro calibration failed."));
+    }
+    if (!bmi323_z_accel_calibrate(&accel_cal)) {
+        Serial.println(F("[ERROR] BMI323 accel-Z calibration failed."));
+    }
+    save_calibration_to_flash(gyro_cal, accel_cal);
+    bmi323_write_timestamp(now);
+    apply_gyro_calibration(&gyro_cal);
+    apply_accel_calibration(&accel_cal);
+    Serial.println(F("[BMI323] Calibration completed, saved, and applied."));
 
-    // BMP390 age
+    // BMP390 — keep age/staleness logic
     uint32_t bmp_ts = bmp390_peek_timestamp();
     uint32_t bmp_age = (bmp_ts > 0 && now >= bmp_ts) ? (now - bmp_ts) : UINT32_MAX;
-
-    bool bmi_stale = (bmi_age == UINT32_MAX) || (bmi_age > CALIB_VALID_DURATION);
     bool bmp_stale = (bmp_age == UINT32_MAX) || (bmp_age > CALIB_VALID_DURATION);
-
-    bool bmi_too_long = (bmi_age != UINT32_MAX) && (bmi_age > LONG_EXPIRE_DURATION);
     bool bmp_too_long = (bmp_age != UINT32_MAX) && (bmp_age > LONG_EXPIRE_DURATION);
 
-    // If "too long", erase first so we don't accidentally use stale
-    if (bmi_too_long) {
-        Serial.println(F("[BMI323] Calibration too old -> erasing."));
-        bmi323_erase_calibration();
-    }
     if (bmp_too_long) {
         Serial.println(F("[BMP390] Calibration too old -> erasing."));
         bmp390_invalidate_eeprom();
+        bmp_stale = true;
     }
 
-    // If both fresh and user chooses to keep, we apply and exit
-    bool user_wants_recal = prompt_user_recalibration(bmi_age, bmp_age, bmi_stale, bmp_stale);
-    if (!user_wants_recal && !bmi_stale && !bmp_stale) {
-        Serial.println(F("[CAL] Using saved calibrations."));
-        apply_all_if_available();
-        return;
+    if (bmp_stale) {
+        Serial.println(F("[BMP390] Calibration stale or missing — starting calibration..."));
+        if (bmp390_calibrate_offset() == 0) {
+            Serial.println(F("[BMP390] Calibration completed, saved, and applied."));
+        } else {
+            Serial.println(F("[ERROR] BMP390 calibration failed — trying saved data..."));
+            bmp390_apply_calibration();
+        }
+    } else {
+        Serial.println(F("[BMP390] Using saved calibration."));
+        bmp390_apply_calibration();
     }
 
-    // Either user requested recalibration or one/both are stale
-    if (!recalibrate_all_and_save()) {
-        Serial.println(F("[CAL] Recalibration failed. Attempting to apply any saved calibrations..."));
-        apply_all_if_available();
-        return;
-    }
-
-    Serial.println(F("[CAL] Recalibration done."));
+    Serial.println(F("[CAL] Startup calibration sequence completed."));
 }
