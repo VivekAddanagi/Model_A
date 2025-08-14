@@ -321,7 +321,7 @@ void update_orientation(float ax, float ay, float az, float gx, float gy, float 
 
 
 #define FIFO_FRAME_SIZE 16  // 6 (accel) + 6 (gyro) + 2 (temp) + 2 (sensor time)
-#define FIFO_BUFFER_SIZE 256
+#define FIFO_BUFFER_SIZE 512
 static uint8_t fifo_buffer[FIFO_BUFFER_SIZE];
 // At top of the file
 static uint8_t raw_buffer[FIFO_BUFFER_SIZE + 1];
@@ -335,14 +335,9 @@ static uint8_t raw_buffer[FIFO_BUFFER_SIZE + 1];
 void bmi323_flush_fifo() {
     bmi323_writeRegister(0x37, 0x0001);  // Trigger FIFO flush
     delay(2);
-
-    // Poll until FIFO is empty
-    uint16_t fifo_level;
-    do {
-        fifo_level = bmi323_readRegister(0x15) & 0x07FF; // bits 0-10
+    while ((bmi323_readRegister(0x15) & 0x07FF) != 0) {
         delay(1);
-    } while (fifo_level != 0);
-
+    }
     Serial.println("[FIFO] Flush successful.");
 }
 
@@ -383,33 +378,40 @@ void bmi323_setup_fifo() {
     Serial.printf("FIFO_INT_0:    0x%04X\n", bmi323_readRegister(0x3B));
 }
 
+
+// Robust FIFO read
 void bmi323_read_fifo() {
-
-        Serial.println("[DEBUG] bmi323_read_fifo() start");
-
-    // Print a few sanity checks
-    Serial.printf("[DEBUG] current_config ptr = %p\n", (void*)current_config);
-    Serial.printf("[DEBUG] &stable_config = %p, &hover_config = %p, &cruise_config = %p\n",
-                  (void*)&stable_config, (void*)&hover_config, (void*)&cruise_config);
-    Serial.printf("[DEBUG] sizeof(raw) estimate = %d\n", FIFO_BUFFER_SIZE+1);
-
     uint16_t fifo_fill_words = bmi323_readRegister(0x15) & 0x07FF;
-    Serial.printf("[DEBUG] fifo_fill_words = %u\n", fifo_fill_words);
-    
+
     if (fifo_fill_words == 0) return;
+
+    // Handle overflow
+    if (fifo_fill_words > (FIFO_BUFFER_SIZE / 2)) {
+        Serial.println("[FIFO] Overflow detected, flushing FIFO!");
+        bmi323_flush_fifo();
+        return;
+    }
 
     int bytes_to_read = fifo_fill_words * 2;
     if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
 
-    // SPI dummy byte handling
     uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
-    bmi323_burstRead(0x16, raw, bytes_to_read + 1);  // SPI: first byte is dummy
-    memcpy(fifo_buffer, raw + 1, bytes_to_read);     // skip dummy byte
+    bmi323_burstRead(0x16, raw, bytes_to_read + 1);  // SPI burst read, first byte dummy
+    memcpy(fifo_buffer, raw + 1, bytes_to_read);
 
     int index = 0;
+
+    // Align FIFO to first valid frame
     while (index + FIFO_FRAME_SIZE <= bytes_to_read) {
-        // Read all components
+        // Peek accel X
         int16_t ax = (fifo_buffer[index + 1] << 8) | fifo_buffer[index + 0];
+
+        if (ax == 0x7F01 || ax == 0xFFFF) {  // dummy or invalid frame
+            index++;  // shift one byte
+            continue;
+        }
+
+        // Now read full frame
         int16_t ay = (fifo_buffer[index + 3] << 8) | fifo_buffer[index + 2];
         int16_t az = (fifo_buffer[index + 5] << 8) | fifo_buffer[index + 4];
 
@@ -418,60 +420,44 @@ void bmi323_read_fifo() {
         int16_t gz = (fifo_buffer[index +11] << 8) | fifo_buffer[index +10];
 
         int16_t temp_raw = (fifo_buffer[index +13] << 8) | fifo_buffer[index +12];
+        uint16_t sensor_time = (fifo_buffer[index +15] << 8) | fifo_buffer[index +14];
 
         index += FIFO_FRAME_SIZE;
 
-        // Reject dummy frames
-        if (ax == DUMMY_ACCEL || gx == DUMMY_GYRO || temp_raw == DUMMY_TEMP)
-            continue;
-
-        // Convert and apply calibration
+        // Convert to physical units (offsets already applied internally)
         float ax_g = ax / 4096.0f;
         float ay_g = ay / 4096.0f;
-        float az_g = az / 4096.0f - accel_cal.bias_z;
+        float az_g = az / 4096.0f;
 
-        float gx_dps = gx / 16.384f - gyro_cal.bias_x;
-        float gy_dps = gy / 16.384f - gyro_cal.bias_y;
-        float gz_dps = gz / 16.384f - gyro_cal.bias_z;
+        float gx_dps = gx / 16.384f;
+        float gy_dps = gy / 16.384f;
+        float gz_dps = gz / 16.384f;
 
-        // ✅ Orientation update
-        update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps , gz_dps);
+        float temp_c = temp_raw / 512.0f + 23.0f;
+        temp_c = constrain(temp_c, -40.0f, 85.0f);
 
-        // ✅ Corrections (mode-based)
+        // Update orientation / AHRS
+        update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
+
+        // Mode-based corrections
         if (current_config->stabilize_pitch) {
             float pitch_error = 0.0f - estimated_pitch;
-            float pitch_correction = pitch_error * current_config->pitch_gain;
-            Serial.printf("Pitch correction: %.2f\n", pitch_correction);
+            float pitch_corr = pitch_error * current_config->pitch_gain;
         }
-
         if (current_config->stabilize_roll) {
             float roll_error = 0.0f - estimated_roll;
-            float roll_correction = roll_error * current_config->roll_gain;
-            Serial.printf("Roll correction: %.2f\n", roll_correction);
+            float roll_corr = roll_error * current_config->roll_gain;
         }
-
         if (current_config->stabilize_yaw) {
             float yaw_error = 0.0f - estimated_yaw;
-            float yaw_correction = yaw_error * current_config->yaw_gain;
-            Serial.printf("Yaw correction: %.2f\n", yaw_correction);
+            float yaw_corr = yaw_error * current_config->yaw_gain;
         }
 
-        // ✅ FIFO-style debug output
-float temp_c = temp_raw / 512.0f + 23.0f;
-
-// Optional: log raw value
-Serial.printf("TEMP_RAW: %d | ", temp_raw);
-
-// Clamp to valid range instead of marking as nan
-temp_c = constrain(temp_c, -40.0f, 85.0f);
-
-Serial.printf("ACC[g]: X=%.2f Y=%.2f Z=%.2f | ", ax_g, ay_g, az_g);
-Serial.printf("GYRO[dps]: X=%.2f Y=%.2f Z=%.2f | ", gx_dps, gy_dps, gz_dps);
-Serial.printf("TEMP: %.2f\n", temp_c);
-
+        // Debug output
+        Serial.printf("TEMP: %.2f°C | ACC[g]: X=%.2f Y=%.2f Z=%.2f | GYRO[dps]: X=%.2f Y=%.2f Z=%.2f | Time: %u\n",
+                      temp_c, ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, sensor_time);
     }
 }
-
 
 //   Calibration Structures
 

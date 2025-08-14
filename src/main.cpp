@@ -44,13 +44,21 @@ void setup() {
     // Print the applied configuration
    // print_mode_configuration(selected);
 
+   // Setup FIFO for continuous reading
+    bmi323_setup_fifo();
+
 
     Serial.println(F("Flight mode configuration applied."));
 }
 
 // === Loop ===
 void loop() {
-    //comManager.update(); // Update communication manager
+    // 1. Check FIFO for new data
+    bmi323_read_fifo();
 
-    // Main drone operation loop
+    // 2. Optional: update communication / telemetry
+    comManager.update();
+
+    // 3. Add a small delay to avoid starving SPI bus (optional)
+    delay(1);
 }
