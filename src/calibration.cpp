@@ -129,12 +129,12 @@ void run_calibration_sequence_startup() {
         Serial.println(F("[ERROR] BMP390 calibration failed."));
 
     // Save calibration (optional – so we can view later if needed)
-    save_all_calibration(gyro_cal, accel_cal, pressure_offset);
+    //save_all_calibration(gyro_cal, accel_cal, pressure_offset);
 
     // Apply calibration
     apply_gyro_calibration(&gyro_cal);
     apply_accel_calibration(&accel_cal);
-    bmp390_apply_calibration();
+   // bmp390_apply_calibration();
 
     // Show results
     print_calibration_data();

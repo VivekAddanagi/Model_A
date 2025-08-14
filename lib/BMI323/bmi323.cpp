@@ -481,6 +481,43 @@ static Preferences prefs;
 #define GYRO_SAMPLES 200
 #define ACCEL_SAMPLES 100
 
+void bmi323_writeOffset(uint8_t reg, int16_t value, uint8_t bitWidth) {
+    // 1. Read current register value
+    uint16_t current = bmi323_readRegister(reg);
+
+    // 2. Mask to only modify intended bits
+    uint16_t mask = (1 << bitWidth) - 1;
+    current &= ~mask;
+
+    // 3. Mask new value to bitWidth
+    uint16_t newVal = value & mask;
+
+    // 4. Combine
+    current |= newVal;
+
+    // 5. Write back
+    bmi323_writeRegister(reg, current);
+}
+
+
+int16_t bmi323_readOffset(uint8_t reg, uint8_t bitWidth) {
+    // Read full register
+    uint16_t raw = bmi323_readRegister(reg);
+
+    // Mask the relevant bits
+    int16_t val = raw & ((1 << bitWidth) - 1);
+
+    // Sign-extend
+    if (val & (1 << (bitWidth - 1))) {
+        val |= ~((1 << bitWidth) - 1);
+    }
+
+    return val;
+}
+
+
+
+
 void wait_for_user_confirmation() {
     Serial.println("Place the drone level and press any key in Serial Monitor...");
     while (!Serial.available()) {
@@ -519,43 +556,78 @@ bool bmi323_quick_gyro_calibrate(GyroCalibration* cal) {
     return true;
 }
 
+
 bool bmi323_accel_calibrate_all(AccelCalibration* cal) {
     float sum_x = 0, sum_y = 0, sum_z = 0;
-    const int samples = 500;
 
-    for (int i = 0; i < samples; i++) {
+    for (int i = 0; i < ACCEL_SAMPLES; i++) {
         float ax, ay, az;
-        if (!bmi323_read_accel(&ax, &ay, &az)) {
-            return false;
-        }
+        if (!bmi323_read_accel(&ax, &ay, &az)) return false;
         sum_x += ax;
         sum_y += ay;
         sum_z += az;
         delay(5);
     }
 
-    cal->bias_x = sum_x / samples;
-    cal->bias_y = sum_y / samples;
-    cal->bias_z = sum_z / samples;
+    cal->bias_x = sum_x / ACCEL_SAMPLES;
+    cal->bias_y = sum_y / ACCEL_SAMPLES;
+    cal->bias_z = sum_z / ACCEL_SAMPLES;
 
     return true;
 }
 
 
 void apply_gyro_calibration(const GyroCalibration* cal) {
-    int16_t ox = (int16_t)(cal->bias_x * 16.384f);
-    int16_t oy = (int16_t)(cal->bias_y * 16.384f);
-    int16_t oz = (int16_t)(cal->bias_z * 16.384f);
+    // Convert from dps to 10-bit register units
+    int16_t ox = (int16_t)(cal->bias_x / 0.061f);
+    int16_t oy = (int16_t)(cal->bias_y / 0.061f);
+    int16_t oz = (int16_t)(cal->bias_z / 0.061f);
 
-    bmi323_writeRegister(0x66, ox); // GYR_DP_OFF_X
-    bmi323_writeRegister(0x68, oy); // GYR_DP_OFF_Y
-    bmi323_writeRegister(0x6A, oz); // GYR_DP_OFF_Z
+    // Constrain to 10-bit signed range
+    ox = constrain(ox, -512, 511);
+    oy = constrain(oy, -512, 511);
+    oz = constrain(oz, -512, 511);
+
+    // Write offsets safely using RMW approach
+    bmi323_writeOffset(0x66, ox, 10); // GYR_DP_OFF_X
+    bmi323_writeOffset(0x68, oy, 10); // GYR_DP_OFF_Y
+    bmi323_writeOffset(0x6A, oz, 10); // GYR_DP_OFF_Z
+
+    // Read back for verification
+    int16_t rx = bmi323_readOffset(0x66, 10);
+    int16_t ry = bmi323_readOffset(0x68, 10);
+    int16_t rz = bmi323_readOffset(0x6A, 10);
+
+    Serial.printf("[GYRO CAL] Written offsets: X=%d | Y=%d | Z=%d\n", ox, oy, oz);
+    Serial.printf("[GYRO CAL] Read back offsets: X=%d | Y=%d | Z=%d\n", rx, ry, rz);
 }
 
 void apply_accel_calibration(const AccelCalibration* cal) {
-    int16_t oz = (int16_t)(cal->bias_z / 0.00003052f); // offset in LSBs
-    bmi323_writeRegister(0x64, oz); // ACC_DP_OFF_Z
+    // Convert from m/s² to 14-bit register units
+    int16_t ox = (int16_t)(cal->bias_x / 0.00003052f);
+    int16_t oy = (int16_t)(cal->bias_y / 0.00003052f);
+    int16_t oz = (int16_t)(cal->bias_z / 0.00003052f);
+
+    // Constrain to 14-bit signed range
+    ox = constrain(ox, -8192, 8191);
+    oy = constrain(oy, -8192, 8191);
+    oz = constrain(oz, -8192, 8191);
+
+    // Write offsets safely using RMW approach
+    bmi323_writeOffset(0x60, ox, 14); // ACC_DP_OFF_X
+    bmi323_writeOffset(0x62, oy, 14); // ACC_DP_OFF_Y
+    bmi323_writeOffset(0x64, oz, 14); // ACC_DP_OFF_Z
+
+    // Read back for verification
+    int16_t rx = bmi323_readOffset(0x60, 14);
+    int16_t ry = bmi323_readOffset(0x62, 14);
+    int16_t rz = bmi323_readOffset(0x64, 14);
+
+    Serial.printf("[ACCEL CAL] Written offsets: X=%d | Y=%d | Z=%d\n", ox, oy, oz);
+    Serial.printf("[ACCEL CAL] Read back offsets: X=%d | Y=%d | Z=%d\n", rx, ry, rz);
 }
+
+
 
 bool load_calibration_from_flash(GyroCalibration& gyro_cal, AccelCalibration& accel_cal) {
     prefs.begin("bmi323", true);  // Read-only

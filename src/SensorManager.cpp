@@ -22,29 +22,6 @@ bool SensorManager::begin() {
     bmi323_set_axis_remap(0x00);
     delay(200);
 
-    if (user_requested_recalibration()) {
-        clear_calibration_flash();
-        perform_calibration_sequence();
-    } else {
-        if (load_calibration_from_flash(gyro_cal, accel_cal)) {
-            apply_gyro_calibration(&gyro_cal);
-            apply_accel_calibration(&accel_cal);
-        } else {
-            perform_calibration_sequence();
-        }
-    }
-
-    print_calibration_info();
-
-    current_mode = select_flight_mode();
-
-    switch (current_mode) {
-        case MODE_STABLE: current_config = &stable_config; break;
-        case MODE_HOVER:  current_config = &hover_config;  break;
-        case MODE_CRUISE: current_config = &cruise_config; break;
-    }
-
-    Serial.println("Flight mode configured. Starting control loop...");
     bmi323_setup_fifo();
    
 
@@ -58,20 +35,8 @@ bool SensorManager::begin() {
 
     bmp_present = true;
 
-    // Try to apply stored calibration. If it fails, keep operating but log.
-    if (bmp390_apply_calibration() != 0) {
-        Serial.println("[CALIB] No valid BMP390 calibration in EEPROM.");
-        // Optionally we could auto-calibrate here if system is on the ground:
-        // bmp390_calibrate_offset();
-    } else {
-        Serial.printf("[CALIB] Applied ground pressure offset: %.2f Pa\n", bmp390_get_ground_pressure());
-    }
-
     // Initialize interrupts and FIFO handling
     bmp390_fifo_init();
-
-    // Apply an initial flight/profile mode to BMP390 (use current_mode mapping)
-    BMP390_set_flight_mode((bmp390_mode_t)current_mode);
 
     // Start FIFO continuous mode; enable pressure & temperature
     if (bmp390_start_fifo_continuous_mode(true, true) != 0) {

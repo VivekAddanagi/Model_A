@@ -176,7 +176,7 @@ void bmi323_read_fifo(void);
 void update_orientation(float ax, float ay, float az, float gx, float gy ,float gz);
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length);
 bool bmi323_read_accel(float* ax, float* ay, float* az);
-
+uint16_t bmi323_readRegister16(uint8_t reg);
 #ifdef __cplusplus
 }
 #endif
