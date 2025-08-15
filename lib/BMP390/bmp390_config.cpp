@@ -270,13 +270,13 @@ int bmp390_start_fifo_continuous_mode(bool pressure_enabled, bool temp_enabled) 
     } while (!(status & (1 << 4)) && --timeout > 0); // Bit 4: cmd_rdy
 
     if (timeout <= 0) {
-        Serial.println("[ERROR] Timeout waiting for command ready.");
+        Serial.println("[BMP390 ERROR] Timeout waiting for command ready.");
         return -1;
     }
 
     // Step 6: Set Normal mode to start measurement
     if (bmp390_set_normal_mode(pressure_enabled, temp_enabled) != 0) {
-        Serial.println("[ERROR] Failed to set NORMAL mode");
+        Serial.println("[BMP390 ERROR] Failed to set NORMAL mode");
         return -2;
     }
 
@@ -284,7 +284,7 @@ int bmp390_start_fifo_continuous_mode(bool pressure_enabled, bool temp_enabled) 
     bmp390_read(BMP390_REG_PWR_CTRL, &pwr_ctrl, 1);
     //Serial.printf("[DEBUG] PWR_CTRL after setting NORMAL: 0x%02X\n", pwr_ctrl);
 
-    Serial.println("[INFO] FIFO mode active.");
+    Serial.println("[BMP390 INFO] FIFO mode active.");
     return 0;
 }
 
@@ -305,21 +305,21 @@ int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, u
 
     uint8_t len_bytes[2];
     if (bmp390_read(BMP390_REG_FIFO_LENGTH_0, len_bytes, 2) != 0) {
-        Serial.println("[ERROR] Failed to read FIFO length");
+        Serial.println("[BMP390 ERROR] Failed to read FIFO length");
         return -1;
     }
 
     uint16_t fifo_len = (len_bytes[1] << 8) | len_bytes[0];
     if (fifo_len == 0 || fifo_len > BMP390_FIFO_MAX_SIZE) {
-        Serial.printf("[ERROR] Invalid FIFO length: %d bytes\n", fifo_len);
+        Serial.printf("[BMP390 ERROR] Invalid FIFO length: %d bytes\n", fifo_len);
         return 0;
     }
 
-    Serial.printf("[DEBUG] FIFO reported length: %d bytes\n", fifo_len);
+    Serial.printf("[BMP390 DEBUG] FIFO reported length: %d bytes\n", fifo_len);
 
     uint8_t buffer[BMP390_FIFO_MAX_SIZE];
     if (bmp390_read(BMP390_REG_FIFO_DATA, buffer, fifo_len) != 0) {
-        Serial.println("[ERROR] Failed to read FIFO data");
+        Serial.println("[BMP390 ERROR] Failed to read FIFO data");
         return -1;
     }
 
@@ -386,9 +386,9 @@ int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, u
             case 0x01: {  // Control Frame
                 if (index < fifo_len) {
                     index++;  // skip opcode
-                    Serial.println("[INFO] Control frame skipped.");
+                    Serial.println("[BMP390 INFO] Control frame skipped.");
                 } else {
-                    Serial.println("[WARN] Truncated control frame.");
+                    Serial.println("[BMP390 WARN] Truncated control frame.");
                     return -1;
                 }
                 break;
@@ -399,16 +399,16 @@ int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, u
                     if (index < fifo_len) {
                         uint8_t empty = buffer[index++];
                         if (empty != 0x00)
-                            Serial.printf("[INFO] Nonzero byte in empty frame: 0x%02X\n", empty);
+                            Serial.printf("[ BMP390 INFO] Nonzero byte in empty frame: 0x%02X\n", empty);
                     }
                 } else {
-                    Serial.println("[INFO] Reserved frame skipped.");
+                    Serial.println("[BMP390 INFO] Reserved frame skipped.");
                 }
                 break;
             }
 
             case 0x03: {
-                Serial.printf("[WARN] Unknown frame mode/header: 0x%02X\n", header);
+                Serial.printf("[BMP390 WARN] Unknown frame mode/header: 0x%02X\n", header);
                 break;
             }
         }
@@ -428,19 +428,19 @@ int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, u
 // ===== Utilities =====
  
 void BMP390_discard_samples(uint8_t count, bmp390_mode_t mode) {
-    Serial.printf("[INFO] Discarding %d sample(s)...\n", count);
+    Serial.printf("[BMP390 INFO] Discarding %d sample(s)...\n", count);
 
     for (uint8_t i = 0; i < count; ++i) {
         float p, t;
         if (bmp390_perform_single_forced_measurement(&p, &t, true, true) == 0) {
             //Serial.printf("[INFO] Discarded Sample %d: P=%.2f Pa, T=%.2f °C\n", i + 1, p, t);
         } else {
-            Serial.printf("[WARN] Failed to discard sample %d\n", i + 1);
+            Serial.printf("[BMP390 WARN] Failed to discard sample %d\n", i + 1);
         }
         delay(20);
     }
 
-    Serial.println("[INFO] Sample discard complete.");
+    Serial.println("[BMP390 INFO] Sample discard complete.");
 }
 
 /* was used earlier but not any more ,just for referrence 
@@ -488,7 +488,7 @@ void bmp390_print_configuration() {
 void BMP390_print_raw_before_fifo() {
     uint8_t data[6];
     if (bmp390_read(0x04, data, 6) != 0) {
-        Serial.println("[ERROR] Failed to read raw temp/press");
+        Serial.println("[BMP390 ERROR] Failed to read raw temp/press");
         return;
     }
 

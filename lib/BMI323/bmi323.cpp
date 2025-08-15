@@ -338,7 +338,7 @@ void bmi323_flush_fifo() {
     while ((bmi323_readRegister(0x15) & 0x07FF) != 0) {
         delay(1);
     }
-    Serial.println("[FIFO] Flush successful.");
+    Serial.println("[BMI323 FIFO] Flush successful.");
 }
 
 void bmi323_setup_fifo() {
@@ -372,10 +372,10 @@ void bmi323_setup_fifo() {
     bmi323_flush_fifo();
 
     // 7. Debug readback
-    Serial.printf("FIFO_CONFIG_0: 0x%04X\n", bmi323_readRegister(0x36));
-    Serial.printf("FIFO_CONFIG_1: 0x%04X\n", bmi323_readRegister(0x37));
-    Serial.printf("FIFO_CTRL:     0x%04X\n", bmi323_readRegister(0x3A));
-    Serial.printf("FIFO_INT_0:    0x%04X\n", bmi323_readRegister(0x3B));
+    //Serial.printf("BMI323 FIFO_CONFIG_0: 0x%04X\n", bmi323_readRegister(0x36));
+    //Serial.printf("BMI323 FIFO_CONFIG_1: 0x%04X\n", bmi323_readRegister(0x37));
+   // Serial.printf("BMI323 FIFO_CTRL:     0x%04X\n", bmi323_readRegister(0x3A));
+    //Serial.printf("BMI323 FIFO_INT_0:    0x%04X\n", bmi323_readRegister(0x3B));
 }
 
 
@@ -387,7 +387,7 @@ void bmi323_read_fifo() {
 
     // Handle overflow
     if (fifo_fill_words > (FIFO_BUFFER_SIZE / 2)) {
-        Serial.println("[FIFO] Overflow detected, flushing FIFO!");
+        Serial.println("[BMI323 FIFO] Overflow detected, flushing FIFO!");
         bmi323_flush_fifo();
         return;
     }
@@ -584,8 +584,8 @@ void apply_gyro_calibration(const GyroCalibration* cal) {
     int16_t ry = bmi323_readOffset(0x68, 10);
     int16_t rz = bmi323_readOffset(0x6A, 10);
 
-    Serial.printf("[GYRO CAL] Written offsets: X=%d | Y=%d | Z=%d\n", ox, oy, oz);
-    Serial.printf("[GYRO CAL] Read back offsets: X=%d | Y=%d | Z=%d\n", rx, ry, rz);
+   // Serial.printf("[GYRO CAL] Written offsets: X=%d | Y=%d | Z=%d\n", ox, oy, oz);
+   // Serial.printf("[GYRO CAL] Read back offsets: X=%d | Y=%d | Z=%d\n", rx, ry, rz);
 }
 
 void apply_accel_calibration(const AccelCalibration* cal) {
@@ -609,8 +609,8 @@ void apply_accel_calibration(const AccelCalibration* cal) {
     int16_t ry = bmi323_readOffset(0x62, 14);
     int16_t rz = bmi323_readOffset(0x64, 14);
 
-    Serial.printf("[ACCEL CAL] Written offsets: X=%d | Y=%d | Z=%d\n", ox, oy, oz);
-    Serial.printf("[ACCEL CAL] Read back offsets: X=%d | Y=%d | Z=%d\n", rx, ry, rz);
+   // Serial.printf("[ACCEL CAL] Written offsets: X=%d | Y=%d | Z=%d\n", ox, oy, oz);
+   // Serial.printf("[ACCEL CAL] Read back offsets: X=%d | Y=%d | Z=%d\n", rx, ry, rz);
 }
 
 

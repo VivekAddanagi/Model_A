@@ -12,7 +12,7 @@ public:
     void update();
     void calibrateBMI323(bool force);
     void printBMI323Data();
-
+    void process_bmp390_fifo();  // Declare BMP390 FIFO handler as a member
     // Newly added declarations so cpp matches header
     FlightMode select_flight_mode();
     void validate_config();
