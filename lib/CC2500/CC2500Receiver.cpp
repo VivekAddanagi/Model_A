@@ -31,7 +31,7 @@ void CC2500Receiver::begin() {
     pinMode(CC2500_GDO0_PIN, INPUT_PULLUP);
 
 #if defined(ESP32)
-    Serial.printf("[DEBUG] GDO0 pin mode: %d, level: %d\n",
+    Serial.printf("[CC2500 DEBUG] GDO0 pin mode: %d, level: %d\n",
                   getPinMode(CC2500_GDO0_PIN),
                   digitalRead(CC2500_GDO0_PIN));
 #endif
@@ -51,7 +51,7 @@ bool CC2500Receiver::receivePacket() {
     bool crcOk;
     delayMicroseconds(20);
     uint8_t state = _readMARCState();
-    Serial.printf("[DEBUG] MARCSTATE = 0x%02X\n", state);
+    Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
 
     if (_readRXFIFO(_packet, len, crcOk)) {
         if (_verifyPacket(_packet, len, crcOk)) {
@@ -100,7 +100,7 @@ bool CC2500Receiver::isTimedOut(uint32_t timeoutMs) const {
 }
 
 void CC2500Receiver::_reset() {
-    Serial.println("[RESET] Starting enhanced reset sequence...");
+    Serial.println("[CC2500 RESET] Starting enhanced reset sequence...");
     
     // 1. Put chip in IDLE state first
     _strobeCommand(SIDLE);
@@ -126,7 +126,7 @@ void CC2500Receiver::_reset() {
     uint32_t timeout = micros() + 5000; // 5ms timeout
     while(digitalRead(_miso) != LOW) {  // Change to HIGH if your hardware inverts
         if(micros() > timeout) {
-            Serial.println("[WARNING] MISO not low after CS asserted");
+            Serial.println("[CC2500 WARNING] MISO not low after CS asserted");
             break;
         }
     }
@@ -142,9 +142,9 @@ void CC2500Receiver::_reset() {
     // 6. Verify reset completed
     uint8_t partnum = _readRegister(0x30);
     if(partnum != 0x80) {
-        Serial.printf("[ERROR] Reset failed - PARTNUM: 0x%02X (expected 0x80)\n", partnum);
+        Serial.printf("[CC2500 ERROR] Reset failed - PARTNUM: 0x%02X (expected 0x80)\n", partnum);
     } else {
-        Serial.println("[RESET] Successful");
+        Serial.println("[CC2500 RESET] Successful");
     }
 }
 bool CC2500Receiver::_waitForChipReady() {
@@ -155,14 +155,14 @@ bool CC2500Receiver::_waitForChipReady() {
         if(digitalRead(_miso) == LOW) {
             // Only print debug if waiting took significant time
             if(micros() - start > 100) {
-                Serial.printf("[DEBUG] MISO ready after %d μs\n", micros() - start);
+                Serial.printf("[CC2500 DEBUG] MISO ready after %d μs\n", micros() - start);
             }
             return true;
         }
         delayMicroseconds(10);
     }
     
-    Serial.printf("[ERROR] Timeout waiting for MISO (state: %d)\n", digitalRead(_miso));
+    Serial.printf("[CC2500 ERROR] Timeout waiting for MISO (state: %d)\n", digitalRead(_miso));
     return false;
 }
 void CC2500Receiver::_writeRegister(uint8_t addr, uint8_t value) {
@@ -235,20 +235,20 @@ void CC2500Receiver::_loadPATable() {
     digitalWrite(_cs, HIGH);
     SPI.endTransaction();
 
-    Serial.println("[PA TABLE] Loaded.");
+    Serial.println("[CC2500 PA TABLE] Loaded.");
 }
 
 bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out) {
     delayMicroseconds(100);
 
     uint8_t state = _readMARCState();
-    Serial.printf("[DEBUG] MARCSTATE = 0x%02X\n", state);
+    Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
 
     // Wait for GDO0 to indicate end of packet (RX complete)
     unsigned long start = millis();
     while (digitalRead(CC2500_GDO0_PIN) == LOW) {
         if (millis() - start > 100) {
-            Serial.println("[TIMEOUT] GDO0 didn't trigger (RX complete not signaled)");
+            Serial.println("[CC2500 TIMEOUT] GDO0 didn't trigger (RX complete not signaled)");
             return false;
         }
     }
@@ -261,7 +261,7 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     } while (bytes1 != bytes2);
 
     if (bytes1 != CC2500_PACKET_SIZE) {
-        Serial.printf("[FIFO] Unexpected packet size: %u bytes\n", bytes1);
+        Serial.printf("[CC2500 FIFO] Unexpected packet size: %u bytes\n", bytes1);
         return false;
     }
 
@@ -290,7 +290,7 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     _processStatusBytes(rssi, lqi_crc, rssi_dbm, lqi, crcOk_out);
 
     Serial.printf("[RX] RSSI: %ddBm, LQI: %u, CRC: %s\n", rssi_dbm, lqi, crcOk_out ? "OK" : "FAIL");
-    Serial.printf("[DEBUG] Expected: %d bytes, Got: %d bytes\n", CC2500_PACKET_SIZE, bytes1);
+    Serial.printf("[CC2500 DEBUG] Expected: %d bytes, Got: %d bytes\n", CC2500_PACKET_SIZE, bytes1);
 
     len = CC2500_PACKET_SIZE;
     return true;
@@ -309,7 +309,7 @@ void CC2500Receiver::_processStatusBytes(uint8_t rssiByte, uint8_t lqiByte,
 
 bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk) {
     if (!crcOk || len != CC2500_PACKET_SIZE || data[0] != CC2500_START_BYTE) {
-        Serial.println("[VERIFY] Packet failed verification.");
+        Serial.println("[CC2500 VERIFY] Packet failed verification.");
         return false;
     }
     return true;
@@ -320,7 +320,7 @@ uint8_t CC2500Receiver::_readMARCState() {
 }
 
 void CC2500Receiver::_configureRadio() {
-    Serial.println("[CONFIG] Setting registers...");
+    Serial.println("[CC2500 CONFIG] Setting registers...");
     _writeRegister(0x00, 0x06);
     _writeRegister(0x02, 0x07);
     _writeRegister(0x03, 0x07);
@@ -354,7 +354,7 @@ void CC2500Receiver::_configureRadio() {
     _writeRegister(0x24, 0x2A);
     _writeRegister(0x25, 0x00);
     _writeRegister(0x26, 0x1F);
-    Serial.println("[CONFIG] Configuration complete.");
+    Serial.println("[CC2500 CONFIG] Configuration complete.");
 }
 
 void CC2500Receiver::_printConfigSummary() {
@@ -375,7 +375,7 @@ uint8_t CC2500Receiver::_calculateChecksum(const uint8_t* data, size_t length) {
 }
 
 void CC2500Receiver::_debugPrintPacket(const uint8_t* data, uint8_t len) {
-    Serial.print("[DEBUG] Raw Packet: ");
+    Serial.print("[CC2500 DEBUG] Raw Packet: ");
     for (int i = 0; i < len; i++) Serial.printf("%02X ", data[i]);
     Serial.println();
 }

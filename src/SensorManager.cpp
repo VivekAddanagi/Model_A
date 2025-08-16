@@ -53,8 +53,7 @@ void SensorManager::validate_config() {
 // -------------------- BMP390 FIFO processing --------------------
 void SensorManager::process_bmp390_fifo() {
     static unsigned long last_read_ms = 0;
-    const unsigned long READ_INTERVAL_MS = 10; // from 20ms to 10ms (~100 Hz)
-
+    const unsigned long READ_INTERVAL_MS = 10; // ~100 Hz
 
     bool do_read = fifo_data_ready || (millis() - last_read_ms >= READ_INTERVAL_MS);
     if (!do_read) return;
@@ -75,29 +74,22 @@ void SensorManager::process_bmp390_fifo() {
 
     if (frames_available == 0) return;
 
-    float sum_p = 0.0f, sum_t = 0.0f;
-    int count = 0;
-
     for (int i = 0; i < frames_available; ++i) {
-        if (fifo_data[i].pressure_valid && fifo_data[i].temperature_valid) {
-            sum_p += fifo_data[i].pressure;
-            sum_t += fifo_data[i].temperature;
-            count++;
-        }
+        if (!fifo_data[i].pressure_valid || !fifo_data[i].temperature_valid) continue;
+
+        float pressure = fifo_data[i].pressure;
+        float temperature = fifo_data[i].temperature;
+        float alt_ground = bmp390_altitude_from_ground(pressure, bmp390_get_ground_pressure());
+        float alt_sea   = bmp390_calculate_altitude(pressure);
+
+        // Use millis() as software timestamp per frame
+        unsigned long frame_time = millis();
+
+        Serial.printf(
+            "TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m | Time: %lu\n",
+            temperature, pressure, alt_ground, alt_sea, frame_time
+        );
     }
-
-    if (count == 0) return;
-
-    float avg_p = sum_p / count;
-    float avg_t = sum_t / count;
-    float alt_ground = bmp390_altitude_from_ground(avg_p, bmp390_get_ground_pressure());
-    float alt_sea   = bmp390_calculate_altitude(avg_p);
-    unsigned long now = millis();
-
-    Serial.printf(
-        "[%lu ms] BMP390 AVG: P=%.2f Pa | T=%.2f °C | AltG=%.2f m | AltS=%.2f m\n",
-        now, avg_p, avg_t, alt_ground, alt_sea
-    );
 }
 
 // EOF
