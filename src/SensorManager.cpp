@@ -55,16 +55,12 @@ void SensorManager::process_bmp390_fifo() {
     static unsigned long last_read_ms = 0;
     const unsigned long READ_INTERVAL_MS = 10; // ~100 Hz
 
-    bool do_read = fifo_data_ready || (millis() - last_read_ms >= READ_INTERVAL_MS);
-    if (!do_read) return;
-
+    if (!fifo_data_ready && millis() - last_read_ms < READ_INTERVAL_MS) return;
     last_read_ms = millis();
     fifo_data_ready = false;
 
-    // Check FIFO overflow
-    if (bmp390_check_fifo_overflow() > 0) {
+    if (bmp390_check_fifo_overflow() > 0)
         Serial.println("[WARN] BMP390 FIFO Overflow detected");
-    }
 
     int ret = bmp390_read_fifo_data(fifo_data, FIFO_BUFFER_SIZE, &frames_available);
     if (ret != 0) {
@@ -82,7 +78,7 @@ void SensorManager::process_bmp390_fifo() {
         float alt_ground = bmp390_altitude_from_ground(pressure, bmp390_get_ground_pressure());
         float alt_sea   = bmp390_calculate_altitude(pressure);
 
-        // Use millis() as software timestamp per frame
+        // Use **millis() as software timestamp**, same reference as BMI323
         unsigned long frame_time = millis();
 
         Serial.printf(

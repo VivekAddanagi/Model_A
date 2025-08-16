@@ -381,8 +381,14 @@ void bmi323_setup_fifo() {
 
 // Robust FIFO read
 void bmi323_read_fifo() {
-    uint16_t fifo_fill_words = bmi323_readRegister(0x15) & 0x07FF;
+    static unsigned long last_read_ms = 0;
+    const unsigned long READ_INTERVAL_MS = 10; // ~100 Hz
 
+    // Read only if interval passed
+    if (millis() - last_read_ms < READ_INTERVAL_MS) return;
+    last_read_ms = millis();
+
+    uint16_t fifo_fill_words = bmi323_readRegister(0x15) & 0x07FF;
     if (fifo_fill_words == 0) return;
 
     // Handle overflow
@@ -396,22 +402,15 @@ void bmi323_read_fifo() {
     if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
 
     uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
-    bmi323_burstRead(0x16, raw, bytes_to_read + 1);  // SPI burst read, first byte dummy
+    bmi323_burstRead(0x16, raw, bytes_to_read + 1);  // SPI burst read
     memcpy(fifo_buffer, raw + 1, bytes_to_read);
 
     int index = 0;
 
-    // Align FIFO to first valid frame
     while (index + FIFO_FRAME_SIZE <= bytes_to_read) {
-        // Peek accel X
         int16_t ax = (fifo_buffer[index + 1] << 8) | fifo_buffer[index + 0];
+        if (ax == 0x7F01 || ax == 0xFFFF) { index++; continue; } // skip invalid
 
-        if (ax == 0x7F01 || ax == 0xFFFF) {  // dummy or invalid frame
-            index++;  // shift one byte
-            continue;
-        }
-
-        // Now read full frame
         int16_t ay = (fifo_buffer[index + 3] << 8) | fifo_buffer[index + 2];
         int16_t az = (fifo_buffer[index + 5] << 8) | fifo_buffer[index + 4];
 
@@ -420,11 +419,10 @@ void bmi323_read_fifo() {
         int16_t gz = (fifo_buffer[index +11] << 8) | fifo_buffer[index +10];
 
         int16_t temp_raw = (fifo_buffer[index +13] << 8) | fifo_buffer[index +12];
-        uint16_t sensor_time = (fifo_buffer[index +15] << 8) | fifo_buffer[index +14];
 
         index += FIFO_FRAME_SIZE;
 
-        // Convert to physical units (offsets already applied internally)
+        // Convert to physical units
         float ax_g = ax / 4096.0f;
         float ay_g = ay / 4096.0f;
         float az_g = az / 4096.0f;
@@ -439,25 +437,14 @@ void bmi323_read_fifo() {
         // Update orientation / AHRS
         update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
 
-        // Mode-based corrections
-        if (current_config->stabilize_pitch) {
-            float pitch_error = 0.0f - estimated_pitch;
-            float pitch_corr = pitch_error * current_config->pitch_gain;
-        }
-        if (current_config->stabilize_roll) {
-            float roll_error = 0.0f - estimated_roll;
-            float roll_corr = roll_error * current_config->roll_gain;
-        }
-        if (current_config->stabilize_yaw) {
-            float yaw_error = 0.0f - estimated_yaw;
-            float yaw_corr = yaw_error * current_config->yaw_gain;
-        }
-
-        // Debug output
-        Serial.printf("TEMP: %.2f°C | ACC[g]: X=%.2f Y=%.2f Z=%.2f | GYRO[dps]: X=%.2f Y=%.2f Z=%.2f | Time: %u\n",
-                      temp_c, ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, sensor_time);
+        // Print with **software timestamp**
+        Serial.printf(
+            "TEMP: %.2f°C | ACC[g]: X=%.2f Y=%.2f Z=%.2f | GYRO[dps]: X=%.2f Y=%.2f Z=%.2f | Time: %lu\n",
+            temp_c, ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, millis()
+        );
     }
 }
+
 
 //   Calibration Structures
 
