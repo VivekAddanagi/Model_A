@@ -16,6 +16,7 @@
 #define BMI323_CS_PIN 8
 #define BMI323_SPI_MODE SPI_MODE0
 #define BMI323_SPI_SPEED 4000000  // Match CC2500 speed for bus sharing if needed
+#define BMI323_INT_PIN 9
 
 // --- CC2500 RF Module ---
 #define CC2500_CS_PIN     10

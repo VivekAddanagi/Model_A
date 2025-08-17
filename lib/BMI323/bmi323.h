@@ -12,6 +12,13 @@
 #define SPI_MISO_PIN 13
 #define SPI_MOSI_PIN 11
 
+
+// Define your INT pin here (GPIO 9)
+#ifndef BMI323_INT_PIN
+#define BMI323_INT_PIN 9
+#endif
+
+
 // ----------------------------
 // BMI323 Register Addresses
 // ----------------------------
@@ -30,6 +37,33 @@
 #define FEATURE_DATA_TX        0x42
 #define EXT_ST_RESULT_REG      0x24
 #define FEATURE_IO1_REG        0x11
+
+
+// ----------------- Register map (subset you use) -----------------
+#define REG_ERR_REG          0x01
+#define REG_ACC_CONF         0x20
+#define REG_GYR_CONF         0x21
+#define REG_FIFO_WTM         0x35   // words
+#define REG_FIFO_CONF        0x36   // enables: time/acc/gyr/temp
+#define REG_FIFO_CTRL        0x37   // bit0: flush
+#define REG_IO_INT_CTRL      0x38   // INT1/2 mode + enable
+#define REG_INT_CONF         0x39   // latch mode
+#define REG_INT_MAP1         0x3A   // (features)
+#define REG_INT_MAP2         0x3B   // data-ready / fifo map
+#define REG_INT_STATUS_INT1  0x0D
+#define REG_FIFO_LENGTH      0x15   // words in FIFO
+#define REG_FIFO_DATA        0x16   // read data bytes from here
+
+// ----------------- Config choices -----------------
+#define USE_INT_LATCH   0   // 0 = pulse mode (recommended), 1 = latched (must read INT_STATUS)
+#define WATERMARK_FRAMES 4  // number of frames per IRQ (tune)
+#define FRAME_BYTES      16 // your current parser assumption (acc+gyr+temp(2)+time(2))
+#define WORDS_PER_FRAME  (FRAME_BYTES/2) // 8 words if 16 bytes
+
+
+// ----------------- Buffers -----------------
+#define FIFO_BUFFER_SIZE 512
+
 
 // ----------------------------
 // Constants
@@ -139,6 +173,8 @@ extern bmi323_data_t sensor_data;
 extern GyroCalibration gyro_cal;
 extern AccelCalibration accel_cal;
 
+extern volatile bool bmi323_fifo_ready;
+
 
 
 // ----------------------------
@@ -177,6 +213,8 @@ void update_orientation(float ax, float ay, float az, float gx, float gy ,float 
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length);
 bool bmi323_read_accel(float* ax, float* ay, float* az);
 uint16_t bmi323_readRegister16(uint8_t reg);
+static void bmi323_debug_readback();  // forward declare
+void bmi323_init_isr(void);
 #ifdef __cplusplus
 }
 #endif

@@ -10,7 +10,9 @@ uint16_t frames_available = 0;
 
 // If your bmp390.h exposes this flag, we use it.
 // (Your existing code already referenced it without local definition)
-extern volatile bool fifo_data_ready;
+//extern volatile bool fifo_data_ready;
+
+
 
 // === Global ComManager instance ===
 ComManager comManager;
@@ -57,6 +59,7 @@ void setup() {
     // Initialize BMI323 FIFO
     bmi323_setup_fifo();
 
+
     // Initialize BMP390 FIFO for continuous pressure + temperature
     if (bmp390_fifo_init() != 0 || bmp390_start_fifo_continuous_mode(true, true) != 0) {
         Serial.println("[ERROR] BMP390 FIFO init failed.");
@@ -75,6 +78,8 @@ void setup() {
 }
 
 void loop() {
+    bmi323_read_fifo(); 
+      // poll FIFO every loop
    sensorManager.update(); // Handle BMP390 FIFO
     comManager.update();    // Update CC2500 telemetry
     delay(1);               // Prevent SPI starvation

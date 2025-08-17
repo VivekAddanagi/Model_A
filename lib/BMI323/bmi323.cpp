@@ -322,95 +322,126 @@ void update_orientation(float ax, float ay, float az, float gx, float gy, float 
 
 #define FIFO_FRAME_SIZE 16  // 6 (accel) + 6 (gyro) + 2 (temp) + 2 (sensor time)
 #define FIFO_BUFFER_SIZE 512
-static uint8_t fifo_buffer[FIFO_BUFFER_SIZE];
-// At top of the file
+
 static uint8_t raw_buffer[FIFO_BUFFER_SIZE + 1];
+static uint8_t fifo_buffer[FIFO_BUFFER_SIZE];
+
 
 // Dummy value signatures
 #define DUMMY_ACCEL 0x7F01
 #define DUMMY_GYRO  0x7F02
 #define DUMMY_TEMP  0x8000
 
-// FIFO flush with verification
+// ----------------- Public: flush FIFO -----------------
 void bmi323_flush_fifo() {
-    bmi323_writeRegister(0x37, 0x0001);  // Trigger FIFO flush
+    bmi323_writeRegister(REG_FIFO_CTRL, 0x0001);  // flush bit
     delay(2);
-    while ((bmi323_readRegister(0x15) & 0x07FF) != 0) {
+    // wait until empty
+    while ((bmi323_readRegister(REG_FIFO_LENGTH) & 0x07FF) != 0) {
         delay(1);
     }
     Serial.println("[BMI323 FIFO] Flush successful.");
 }
 
+volatile bool bmi323_fifo_ready = false;
+
+// ----------------- ISR -----------------
+void IRAM_ATTR bmi323_isr_handler() {
+    // Keep it short; do not do SPI here
+#if USE_INT_LATCH
+    // In latched mode, we’ll clear the latch in service function after draining FIFO
+#endif
+    bmi323_fifo_ready = true;
+}
+
+void bmi323_init_isr() {
+    pinMode(BMI323_INT_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(BMI323_INT_PIN), bmi323_isr_handler, RISING);
+}
+
+// ----------------- Public: configure ODR/mode, FIFO, INT -----------------
 void bmi323_setup_fifo() {
-    // 1. Set PMU to Normal Mode
-    bmi323_writeRegister(0x7D, 0x0000);
-    delay(10);
+    // 1) Ensure sensors are ACTIVE (High Performance)
+    // Example: your 200 Hz configs (keep if you like)
+    // ACC: 0x70A9 => HP mode, ODR=200 Hz, ±8g, BW=ODR/4
+    // GYR: 0x70C9 => HP mode, ODR=200 Hz, ±2000 dps, BW=ODR/4
+    bmi323_writeRegister(REG_ACC_CONF, 0x70A9);
+    bmi323_writeRegister(REG_GYR_CONF, 0x70C9);
+    delay(2);
 
-    // 2. Configure FIFO_CONF (0x36) with read-modify-write
-    uint16_t fifo_conf = bmi323_readRegister(0x36);
-    fifo_conf |= (1 << 8);   // Enable time
-    fifo_conf |= (1 << 9);   // Enable accel
-    fifo_conf |= (1 << 10);  // Enable gyro
-    fifo_conf |= (1 << 11);  // Enable temp
-    bmi323_writeRegister(0x36, fifo_conf);
+    // 2) Enable FIFO content (time, acc, gyr, temp)
+    uint16_t fifo_conf = bmi323_readRegister(REG_FIFO_CONF);
+    fifo_conf |= (1 << 8);   // fifo_time_en
+    fifo_conf |= (1 << 9);   // fifo_acc_en
+    fifo_conf |= (1 << 10);  // fifo_gyr_en
+    fifo_conf |= (1 << 11);  // fifo_temp_en
+    bmi323_writeRegister(REG_FIFO_CONF, fifo_conf);
 
-    // 3. Set FIFO watermark to 48 words (~3 frames)
-    bmi323_writeRegister(0x35, 48);
+    // 3) Watermark (in WORDS). If your frame is 16B (8 words), WTM = frames * 8
+    uint16_t wtm_words = (uint16_t)(WATERMARK_FRAMES * WORDS_PER_FRAME); // eg 4*8=32
+    bmi323_writeRegister(REG_FIFO_WTM, wtm_words);
 
-    // 4. Map FIFO watermark interrupt to INT1
-    uint16_t int_map2 = bmi323_readRegister(0x3B);
-    int_map2 &= ~(0b11 << 12);     // Clear fifo_wm_int bits
-    int_map2 |=  (0b01 << 12);     // Map to INT1
-    bmi323_writeRegister(0x3B, int_map2);
+    // 4) Map FIFO watermark → INT1
+    uint16_t int_map2 = bmi323_readRegister(REG_INT_MAP2);
+    int_map2 &= ~(0b11 << 12); // clear fifo_wm map
+    int_map2 |=  (0b01 << 12); // map fifo_wm to INT1
+    bmi323_writeRegister(REG_INT_MAP2, int_map2);
 
-    // 5. Latch interrupt config
-    uint16_t int_conf = bmi323_readRegister(0x39);
-    int_conf |= (1 << 0);          // INT_LATCH = 1
-    bmi323_writeRegister(0x39, int_conf);
+    // 5) Configure INT1 output: active-high, push-pull, enable
+    uint16_t io = bmi323_readRegister(REG_IO_INT_CTRL);
+    io |= (1 << 0);  // int1_lvl = 1 (active high)
+    io &= ~(1 << 1); // int1_od  = 0 (push-pull)
+    io |= (1 << 2);  // int1_output_en = 1
+    bmi323_writeRegister(REG_IO_INT_CTRL, io);
 
-    // 6. Flush FIFO before starting
+    // 6) Latch mode (recommend pulse = 0 for ESP32 attachInterrupt on RISING)
+    uint16_t icf = bmi323_readRegister(REG_INT_CONF);
+#if USE_INT_LATCH
+    icf |=  (1 << 0); // latched
+#else
+    icf &= ~(1 << 0); // pulse
+#endif
+    bmi323_writeRegister(REG_INT_CONF, icf);
+
+    // 7) Flush FIFO and attach ISR
     bmi323_flush_fifo();
+    bmi323_init_isr();
 
-    // 7. Debug readback
-    //Serial.printf("BMI323 FIFO_CONFIG_0: 0x%04X\n", bmi323_readRegister(0x36));
-    //Serial.printf("BMI323 FIFO_CONFIG_1: 0x%04X\n", bmi323_readRegister(0x37));
-   // Serial.printf("BMI323 FIFO_CTRL:     0x%04X\n", bmi323_readRegister(0x3A));
-    //Serial.printf("BMI323 FIFO_INT_0:    0x%04X\n", bmi323_readRegister(0x3B));
+    // 8) Debug/health checks
+    uint16_t err = bmi323_readRegister(REG_ERR_REG);
+    if (err) Serial.printf("[BMI323 ERROR] ERR_REG=0x%04X\n", err);
+    bmi323_debug_readback();
 }
 
 
 // Robust FIFO read
+// ----------------- Public: service FIFO when ISR set -----------------
 void bmi323_read_fifo() {
-    static unsigned long last_read_ms = 0;
-    const unsigned long READ_INTERVAL_MS = 10; // ~100 Hz
+    if (!bmi323_fifo_ready) return;
+    bmi323_fifo_ready = false;
 
-    // Read only if interval passed
-    if (millis() - last_read_ms < READ_INTERVAL_MS) return;
-    last_read_ms = millis();
+#if USE_INT_LATCH
+    // In latched mode, clear INT1 status by reading the status register
+    (void)bmi323_readRegister(REG_INT_STATUS_INT1);
+#endif
 
-    uint16_t fifo_fill_words = bmi323_readRegister(0x15) & 0x07FF;
-    if (fifo_fill_words == 0) return;
+    uint16_t words = bmi323_readRegister(REG_FIFO_LENGTH) & 0x07FF;
+    if (words == 0) return;
 
-    // Handle overflow
-    if (fifo_fill_words > (FIFO_BUFFER_SIZE / 2)) {
-        Serial.println("[BMI323 FIFO] Overflow detected, flushing FIFO!");
-        bmi323_flush_fifo();
-        return;
-    }
+    // Overflow protection (FIFO_BUFFER_SIZE includes +1 spare in raw_buffer usage)
+    uint16_t bytes_to_read = words * 2;
+    if (bytes_to_read > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE;
 
-    int bytes_to_read = fifo_fill_words * 2;
-    if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
+    // Read FIFO data (burst, CS held low by driver)
+    // NOTE: On some SPI drivers, you need to send an address read first. Your driver wraps that.
+    bmi323_burstRead(REG_FIFO_DATA, raw_buffer, bytes_to_read);
+    memcpy(fifo_buffer, raw_buffer, bytes_to_read);
 
-    uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
-    bmi323_burstRead(0x16, raw, bytes_to_read + 1);  // SPI burst read
-    memcpy(fifo_buffer, raw + 1, bytes_to_read);
-
+    // -------- Minimal parse using your current fixed-frame assumption --------
+    // If you later switch to header-mode parsing, replace this block.
     int index = 0;
-
-    while (index + FIFO_FRAME_SIZE <= bytes_to_read) {
+    while (index + FRAME_BYTES <= bytes_to_read) {
         int16_t ax = (fifo_buffer[index + 1] << 8) | fifo_buffer[index + 0];
-        if (ax == 0x7F01 || ax == 0xFFFF) { index++; continue; } // skip invalid
-
         int16_t ay = (fifo_buffer[index + 3] << 8) | fifo_buffer[index + 2];
         int16_t az = (fifo_buffer[index + 5] << 8) | fifo_buffer[index + 4];
 
@@ -419,10 +450,11 @@ void bmi323_read_fifo() {
         int16_t gz = (fifo_buffer[index +11] << 8) | fifo_buffer[index +10];
 
         int16_t temp_raw = (fifo_buffer[index +13] << 8) | fifo_buffer[index +12];
+        // int16_t time_raw = (fifo_buffer[index +15] << 8) | fifo_buffer[index +14]; // you use 2B time
 
-        index += FIFO_FRAME_SIZE;
+        index += FRAME_BYTES;
 
-        // Convert to physical units
+        // Scale (your existing factors)
         float ax_g = ax / 4096.0f;
         float ay_g = ay / 4096.0f;
         float az_g = az / 4096.0f;
@@ -434,16 +466,32 @@ void bmi323_read_fifo() {
         float temp_c = temp_raw / 512.0f + 23.0f;
         temp_c = constrain(temp_c, -40.0f, 85.0f);
 
-        // Update orientation / AHRS
-        update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
+        // TODO: call your AHRS
+        // update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
 
-        // Print with **software timestamp**
-        Serial.printf(
-            "TEMP: %.2f°C | ACC[g]: X=%.2f Y=%.2f Z=%.2f | GYRO[dps]: X=%.2f Y=%.2f Z=%.2f | Time: %lu\n",
-            temp_c, ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, millis()
-        );
+        Serial.printf("TEMP: %.2f°C | ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f | t=%lu\n",
+                      temp_c, ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, millis());
+    }
+
+    // If bytes didn’t align to FRAME_BYTES, you can log once:
+    if (index != bytes_to_read) {
+        Serial.printf("[BMI323 FIFO] Misalign: read=%u, used=%d\n", bytes_to_read, index);
     }
 }
+
+// ----------------- Helper: dump critical regs -----------------
+static void bmi323_debug_readback() {
+    uint16_t err  = bmi323_readRegister(REG_ERR_REG);
+    uint16_t ic   = bmi323_readRegister(REG_IO_INT_CTRL);
+    uint16_t icf  = bmi323_readRegister(REG_INT_CONF);
+    uint16_t m2   = bmi323_readRegister(REG_INT_MAP2);
+    uint16_t fcf  = bmi323_readRegister(REG_FIFO_CONF);
+    uint16_t wtm  = bmi323_readRegister(REG_FIFO_WTM);
+
+    Serial.printf("[BMI323 DBG] ERR=0x%04X IO_INT=0x%04X INT_CONF=0x%04X INT_MAP2=0x%04X FIFO_CONF=0x%04X WTM=%u words\n",
+                  err, ic, icf, m2, fcf, (unsigned)wtm);
+}
+
 
 
 //   Calibration Structures
