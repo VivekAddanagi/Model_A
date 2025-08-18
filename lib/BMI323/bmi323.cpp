@@ -98,6 +98,8 @@ bool bmi323_init(void) {
     // --- Reset Sensor ---
     bmi323_writeRegister(CMD_REG, RESET_CMD);
     delay(200);
+    bmi323_set_axis_remap(0x00);
+    delay(200);
 
     // --- Feature Engine Initialization (Required for Self-Test) ---
     bmi323_writeRegister(0x12, 0x012C);             // FEATURE_IO2: startup_config_0
@@ -473,6 +475,12 @@ void bmi323_read_fifo() {
         float temp_c = temp_raw / 512.0f + 23.0f;
         temp_c = constrain(temp_c, -40.0f, 85.0f);
 
+        // 🚨 filter bogus temps
+       if (temp_c < -20.0f || temp_c > 85.0f) {
+       skipped++;
+       continue;
+     }
+
         // --- Update orientation ---
         update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
 
@@ -628,7 +636,7 @@ bool bmi323_accel_calibrate_all(AccelCalibration* cal) {
 
     cal->bias_x = sum_x / ACCEL_SAMPLES;
     cal->bias_y = sum_y / ACCEL_SAMPLES;
-    cal->bias_z = (sum_z / ACCEL_SAMPLES )- 1.0f; // Adjust for gravity;
+    cal->bias_z = sum_z / ACCEL_SAMPLES;
 
     return true;
 }
