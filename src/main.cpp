@@ -64,6 +64,7 @@ void setup() {
     if (bmp390_fifo_init() != 0 || bmp390_start_fifo_continuous_mode(true, true) != 0) {
         Serial.println("[ERROR] BMP390 FIFO init failed.");
     }
+    delay(20);  // wait for first sample(s) to accumulate
      
     // Attach BMP390 FIFO interrupt if pin is available in your build
     #ifdef BMP390_INT_PIN
@@ -82,5 +83,5 @@ void loop() {
       // poll FIFO every loop
    sensorManager.update(); // Handle BMP390 FIFO
     comManager.update();    // Update CC2500 telemetry
-    delay(1);               // Prevent SPI starvation
+    delay(2);               // Prevent SPI starvation
 }

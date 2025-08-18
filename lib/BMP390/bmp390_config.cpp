@@ -302,18 +302,28 @@ int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, u
 
     *frames_read = 0;
     int valid_count = 0;
+    
 
     uint8_t len_bytes[2];
     if (bmp390_read(BMP390_REG_FIFO_LENGTH_0, len_bytes, 2) != 0) {
         Serial.println("[BMP390 ERROR] Failed to read FIFO length");
         return -1;
     }
-
+    Serial.printf("[BMP390 DEBUG] FIFO_LEN raw: %02X %02X\n", len_bytes[0], len_bytes[1]);
     uint16_t fifo_len = (len_bytes[1] << 8) | len_bytes[0];
-    if (fifo_len == 0 || fifo_len > BMP390_FIFO_MAX_SIZE) {
-        Serial.printf("[BMP390 ERROR] Invalid FIFO length: %d bytes\n", fifo_len);
-        return 0;
-    }
+    Serial.printf("[BMP390 DEBUG] Computed FIFO length = %u bytes\n", fifo_len);
+
+
+    // Validate FIFO length
+    if (fifo_len == 0) {
+    // No new data yet, not really an error
+    //Serial.println("[BMP390 INFO] FIFO empty, no new samples.");
+    return 0;
+}
+if (fifo_len > BMP390_FIFO_MAX_SIZE) {
+    Serial.printf("[BMP390 ERROR] FIFO length too large: %d bytes\n", fifo_len);
+    return -1;
+}
 
     Serial.printf("[BMP390 DEBUG] FIFO reported length: %d bytes\n", fifo_len);
 

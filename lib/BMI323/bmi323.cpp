@@ -367,9 +367,9 @@ void bmi323_setup_fifo() {
     // Example: your 200 Hz configs (keep if you like)
     // ACC: 0x70A9 => HP mode, ODR=200 Hz, ±8g, BW=ODR/4
     // GYR: 0x70C9 => HP mode, ODR=200 Hz, ±2000 dps, BW=ODR/4
-    bmi323_writeRegister(REG_ACC_CONF, 0x70A9);
-    bmi323_writeRegister(REG_GYR_CONF, 0x70C9);
-    delay(2);
+    //bmi323_writeRegister(REG_ACC_CONF, 0x70A9);
+    //bmi323_writeRegister(REG_GYR_CONF, 0x70C9);
+    //delay(2);
 
     // 2) Enable FIFO content (time, acc, gyr, temp)
     uint16_t fifo_conf = bmi323_readRegister(REG_FIFO_CONF);
