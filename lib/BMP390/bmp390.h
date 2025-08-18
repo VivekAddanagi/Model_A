@@ -222,6 +222,10 @@ void bmp390_print_configuration();
 int bmp390_calibrate_offset(void);
 int bmp390_apply_calibration(void);
 
+void updateAltitude(float acc_x, float acc_y, float acc_z,
+                    float roll, float pitch,
+                    float alt_baro, float dt);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

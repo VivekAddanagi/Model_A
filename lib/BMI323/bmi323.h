@@ -154,6 +154,15 @@ const FlightModeConfig cruise_config = {
     .yaw_gain   = 0.8f,
     .altitude_gain = 0.0f
 };
+
+
+// Declare globals (no memory allocated here)
+extern float latest_ax;
+extern float latest_ay;
+extern float latest_az;
+extern float latest_gx;
+extern float latest_gy;
+extern float latest_gz;
 // Global flight mode state (defined in main.cpp)
 
 

@@ -533,3 +533,39 @@ float bmp390_calculate_altitude(float pressure_pa) {
     float reference_pressure = 101325.0f;
     return 44330.0f * (1.0f - powf(pressure_pa / reference_pressure, 1.0f / 5.255f));
 }
+
+
+
+// Parameters
+#define ALPHA_ALT 0.98f   // Complementary filter coefficient
+#define G 9.80665f        // Gravity (m/s²)
+
+// State variables
+float alt_est = 0.0f;   // Estimated altitude
+float vel_z   = 0.0f;   // Vertical velocity estimate
+
+void updateAltitude(float acc_x, float acc_y, float acc_z,
+                    float roll, float pitch,
+                    float alt_baro, float dt) {
+    // 1. Rotate body acceleration into earth frame (Z axis)
+    // Simplified: assume yaw not important for vertical axis
+    float sinR = sinf(roll * M_PI / 180.0f);
+    float cosR = cosf(roll * M_PI / 180.0f);
+    float sinP = sinf(pitch * M_PI / 180.0f);
+    float cosP = cosf(pitch * M_PI / 180.0f);
+
+    // Earth frame acceleration (Z axis)
+    float acc_earth_z = cosP * cosR * acc_z +
+                        cosP * sinR * acc_y -
+                        sinP * acc_x;
+
+    // Convert g → m/s², subtract gravity
+    acc_earth_z = acc_earth_z * G - G;
+
+    // 2. Integrate acceleration → velocity → altitude
+    vel_z += acc_earth_z * dt;   // m/s
+    float alt_acc = alt_est + vel_z * dt;
+
+    // 3. Complementary filter: blend fast acc integration with barometer
+    alt_est = ALPHA_ALT * alt_acc + (1.0f - ALPHA_ALT) * alt_baro;
+}

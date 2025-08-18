@@ -27,6 +27,11 @@ public:
 
     // Debug prints
     void printBMP390Data();
+     // helper for altitude filter
+    void updateAltitude(float ax, float ay, float az,
+                        float roll, float pitch,
+                        float baro_alt, float dt);
+
 
 private:
     // ------- existing BMI323-related members (preserve original names) -------
@@ -69,4 +74,12 @@ private:
     void processBMP390Fifo();
     void handleBMP390Watchdog();
     void updateFilteredPressure(float new_p);
+
+ 
+
+    // Altitude fusion state
+    float alt_est = 0.0f;
+    float vel_z   = 0.0f;
+
+    
 };

@@ -32,9 +32,35 @@ void SensorManager::update() {
     // --- BMI323 update ---
     bmi323_read_fifo();
 
-    // --- Optional: BMP390 FIFO processing ---
+    // --- BMP390 update ---
     process_bmp390_fifo();
+
+    // --- Get latest sensor values ---
+   float ax = latest_ax;
+   float ay = latest_ay;
+   float az = latest_az;
+
+   float gx = latest_gx;
+   float gy = latest_gy;
+   float gz = latest_gz;
+
+
+    float roll  = estimated_roll;
+    float pitch = estimated_pitch;
+
+    float baro_alt = latest_altitude_m;   // from BMP390 FIFO handler
+    static uint32_t last_update_ms = millis();
+    uint32_t now = millis();
+    float dt = (now - last_update_ms) / 1000.0f;
+    last_update_ms = now;
+
+    // --- Fuse for altitude ---
+    updateAltitude(ax, ay, az, roll, pitch, baro_alt, dt);
+
+    // --- Debug print ---
+    Serial.printf("ALT_EST: %.2f m | ALT_BARO: %.2f m\n", alt_est, baro_alt);
 }
+
 
 // -------------------- Public getters --------------------
 void SensorManager::printBMI323Data() {
@@ -89,3 +115,31 @@ void SensorManager::process_bmp390_fifo() {
 }
 
 // EOF
+
+// Complementary filter for altitude
+void SensorManager::updateAltitude(float ax, float ay, float az,
+                                   float roll, float pitch,
+                                   float baro_alt, float dt) {
+    const float ALPHA_ALT = 0.98f;
+    const float G = 9.80665f;
+
+    // Rotate accel into earth Z
+    float sinR = sinf(roll * DEG_TO_RAD);
+    float cosR = cosf(roll * DEG_TO_RAD);
+    float sinP = sinf(pitch * DEG_TO_RAD);
+    float cosP = cosf(pitch * DEG_TO_RAD);
+
+    float acc_earth_z = cosP * cosR * az +
+                        cosP * sinR * ay -
+                        sinP * ax;
+
+    // convert g->m/s², subtract gravity
+    acc_earth_z = acc_earth_z * G - G;
+
+    // integrate velocity + altitude
+    vel_z   += acc_earth_z * dt;
+    float alt_acc = alt_est + vel_z * dt;
+
+    // complementary filter with barometer
+    alt_est = ALPHA_ALT * alt_acc + (1.0f - ALPHA_ALT) * baro_alt;
+}

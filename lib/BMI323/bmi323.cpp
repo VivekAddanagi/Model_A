@@ -297,29 +297,62 @@ FlightMode select_flight_mode() {
     }
 }
 
-// ------------------------
-// Complementary Filter
-// ------------------------
-void update_orientation(float ax, float ay, float az, float gx, float gy, float gz) {
+// Global calibration biases (from your calibration step)
+
+// Update orientation using Complementary Filter
+void update_orientation(float ax, float ay, float az,
+                        float gx, float gy, float gz) {
+    // Complementary filter constant (tuneable)
     const float alpha = 0.98f;
+
+    // Compute delta time since last update
     unsigned long now = millis();
-    float dt = (now - last_update_time) / 1000.0f;
+    float dt = (last_update_time > 0) ? (now - last_update_time) / 1000.0f : 0.0f;
     last_update_time = now;
 
-    float gyro_pitch_delta = gx * dt;
+    if (dt <= 0.0f || dt > 0.1f) {
+        // If dt is too small or too big (e.g. sensor glitch), skip update
+        return;
+    }
+
+    // --------- Step 1: Apply gyro calibration (bias removal) ---------
+   // gx -= gyro_cal.bias_x;
+   // gy -= gyro_cal.bias_y;
+   // gz -= gyro_cal.bias_z;
+
+    // --------- Step 2: Gyro integration ---------
+    float gyro_pitch_delta = gx * dt;  // gx in dps
     float gyro_roll_delta  = gy * dt;
     float gyro_yaw_delta   = gz * dt;
 
-    float acc_pitch = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0f / PI;
-    float acc_roll  = atan2(ay, az) * 180.0f / PI;
+    // --------- Step 3: Accel tilt estimate ---------
+    float acc_pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 180.0f / PI;
+    float acc_roll  = atan2f(ay, az) * 180.0f / PI;
 
-    estimated_pitch = alpha * (estimated_pitch + gyro_pitch_delta) + (1 - alpha) * acc_pitch;
-    estimated_roll  = alpha * (estimated_roll + gyro_roll_delta) + (1 - alpha) * acc_roll;
-    estimated_yaw   += gyro_yaw_delta;  // Simple integration for yaw (no accelerometer support)
+    // --------- Step 4: Complementary filter fusion (Roll & Pitch) ---------
+    estimated_pitch = alpha * (estimated_pitch + gyro_pitch_delta) + (1.0f - alpha) * acc_pitch;
+    estimated_roll  = alpha * (estimated_roll  + gyro_roll_delta) + (1.0f - alpha) * acc_roll;
+
+    // --------- Step 5: Yaw (gyro only, no accel correction) ---------
+    estimated_yaw += gyro_yaw_delta;
+
+    // Keep yaw bounded [-180, 180]
+    if (estimated_yaw > 180.0f)  estimated_yaw -= 360.0f;
+    if (estimated_yaw < -180.0f) estimated_yaw += 360.0f;
+
+    // --------- Step 6: Sanity check for accel correction ---------
+    float acc_mag = sqrtf(ax*ax + ay*ay + az*az);
+    if (fabs(acc_mag - 1.0f) > 0.3f) {
+        // If accelerometer magnitude deviates too much from 1g,
+        // ignore accelerometer correction (likely in free fall or vibration)
+        estimated_pitch = estimated_pitch + gyro_pitch_delta;
+        estimated_roll  = estimated_roll  + gyro_roll_delta;
+    }
+
+    // Debug print (for testing only)
+    Serial.printf("ROLL: %.2f | PITCH: %.2f | YAW: %.2f\n",
+                  estimated_roll, estimated_pitch, estimated_yaw);
 }
-
-
-
 
 
 #define FIFO_FRAME_SIZE 16  // 6 (accel) + 6 (gyro) + 2 (temp) + 2 (sensor time)
@@ -415,6 +448,14 @@ void bmi323_setup_fifo() {
     bmi323_debug_readback();
 }
 
+
+// Allocate memory here (only once in project)
+float latest_ax = 0.0f;
+float latest_ay = 0.0f;
+float latest_az = 0.0f;
+float latest_gx = 0.0f;
+float latest_gy = 0.0f;
+float latest_gz = 0.0f;
 
 // Robust FIFO read
 
@@ -519,6 +560,16 @@ void bmi323_read_fifo() {
         float gy_dps = (fifo_gyr_en ? (float)gy_raw / 16.384f : 0.0f) - gyro_cal.bias_y;
         float gz_dps = (fifo_gyr_en ? (float)gz_raw / 16.384f : 0.0f) - gyro_cal.bias_z;
 
+        
+        // Save latest accel/gyro for external use
+        latest_ax = ax_g;
+        latest_ay = ay_g;
+        latest_az = az_g;
+
+        latest_gx = gx_dps;
+        latest_gy = gy_dps;
+        latest_gz = gz_dps;
+
         // temp handling: skip dummy 0x8000 (convert only if real)
         float temp_c = NAN;
         if (fifo_temp_en && temp_raw != (int16_t)0x8000) {
@@ -545,6 +596,7 @@ void bmi323_read_fifo() {
 
         parsed++;
         index += frame_bytes; // advance by the active frame size
+        
     }
 
     // Misalignment diagnostic
@@ -556,6 +608,9 @@ void bmi323_read_fifo() {
     if (parsed || skipped) {
         Serial.printf("[BMI323 FIFO] Parsed=%d, Skipped=%d\n", parsed, skipped);
     }
+
+         
+
 }
 
 
