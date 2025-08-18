@@ -99,7 +99,7 @@ static void print_calibration_data() {
     Serial.println(F("=== Current Calibration Data ==="));
     Serial.printf("BMI323 Gyro Bias: X=%.6f Y=%.6f Z=%.6f\n",
                   gyro_cal.bias_x, gyro_cal.bias_y, gyro_cal.bias_z);
-    Serial.printf("Accel bias (x, y, z): %.4f, %.4f, %.4f m/s^2\n",
+    Serial.printf("Accel bias (x, y, z): %.4f, %.4f, %.4f g\n",
                   accel_cal.bias_x, accel_cal.bias_y, accel_cal.bias_z);
     Serial.printf("BMP390 Pressure Offset: %.3f Pa\n", pressure_offset);
     Serial.println(F("================================"));

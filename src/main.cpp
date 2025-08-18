@@ -78,7 +78,7 @@ void setup() {
 }
 
 void loop() {
-    bmi323_read_fifo(); 
+    //bmi323_read_fifo(); 
       // poll FIFO every loop
    sensorManager.update(); // Handle BMP390 FIFO
     comManager.update();    // Update CC2500 telemetry

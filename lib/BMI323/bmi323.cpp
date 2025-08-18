@@ -416,6 +416,7 @@ void bmi323_setup_fifo() {
 
 // Robust FIFO read
 // ----------------- Public: service FIFO when ISR set -----------------
+// --- Best merged FIFO reader ---
 void bmi323_read_fifo() {
     if (!bmi323_fifo_ready) return;
     bmi323_fifo_ready = false;
@@ -425,22 +426,23 @@ void bmi323_read_fifo() {
     (void)bmi323_readRegister(REG_INT_STATUS_INT1);
 #endif
 
-    uint16_t words = bmi323_readRegister(REG_FIFO_LENGTH) & 0x07FF;
-    if (words == 0) return;
+    // --- Read FIFO length ---
+    uint16_t fifo_fill_words = bmi323_readRegister(REG_FIFO_LENGTH) & 0x07FF;
+    if (fifo_fill_words == 0) return;
 
-    // Overflow protection (FIFO_BUFFER_SIZE includes +1 spare in raw_buffer usage)
-    uint16_t bytes_to_read = words * 2;
-    if (bytes_to_read > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE;
+    int bytes_to_read = fifo_fill_words * 2;
+    if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
 
-    // Read FIFO data (burst, CS held low by driver)
-    // NOTE: On some SPI drivers, you need to send an address read first. Your driver wraps that.
-    bmi323_burstRead(REG_FIFO_DATA, raw_buffer, bytes_to_read);
-    memcpy(fifo_buffer, raw_buffer, bytes_to_read);
+    // --- SPI dummy byte handling ---
+    uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
+    bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read + 1); // first byte = dummy
+    memcpy(fifo_buffer, raw + 1, bytes_to_read);             // skip dummy
 
-    // -------- Minimal parse using your current fixed-frame assumption --------
-    // If you later switch to header-mode parsing, replace this block.
     int index = 0;
+    int parsed = 0, skipped = 0;
+
     while (index + FRAME_BYTES <= bytes_to_read) {
+        // --- Parse raw frame ---
         int16_t ax = (fifo_buffer[index + 1] << 8) | fifo_buffer[index + 0];
         int16_t ay = (fifo_buffer[index + 3] << 8) | fifo_buffer[index + 2];
         int16_t az = (fifo_buffer[index + 5] << 8) | fifo_buffer[index + 4];
@@ -450,34 +452,68 @@ void bmi323_read_fifo() {
         int16_t gz = (fifo_buffer[index +11] << 8) | fifo_buffer[index +10];
 
         int16_t temp_raw = (fifo_buffer[index +13] << 8) | fifo_buffer[index +12];
-        // int16_t time_raw = (fifo_buffer[index +15] << 8) | fifo_buffer[index +14]; // you use 2B time
 
         index += FRAME_BYTES;
 
-        // Scale (your existing factors)
-        float ax_g = ax / 4096.0f;
-        float ay_g = ay / 4096.0f;
-        float az_g = az / 4096.0f;
+        // --- Reject dummy frames ---
+        if (ax == DUMMY_ACCEL || gx == DUMMY_GYRO || temp_raw == DUMMY_TEMP) {
+            skipped++;
+            continue;
+        }
 
-        float gx_dps = gx / 16.384f;
-        float gy_dps = gy / 16.384f;
-        float gz_dps = gz / 16.384f;
+        // --- Convert and apply calibration ---
+        float ax_g = ax / 4096.0f - accel_cal.bias_x;
+        float ay_g = ay / 4096.0f - accel_cal.bias_y;
+        float az_g = az / 4096.0f - accel_cal.bias_z;
+
+        float gx_dps = gx / 16.384f - gyro_cal.bias_x;
+        float gy_dps = gy / 16.384f - gyro_cal.bias_y;
+        float gz_dps = gz / 16.384f - gyro_cal.bias_z;
 
         float temp_c = temp_raw / 512.0f + 23.0f;
         temp_c = constrain(temp_c, -40.0f, 85.0f);
 
-        // TODO: call your AHRS
-        // update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
+        // --- Update orientation ---
+        update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
 
-        Serial.printf("TEMP: %.2f°C | ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f | t=%lu\n",
+        // --- Mode-based stabilization corrections ---
+        if (current_config->stabilize_pitch) {
+            float pitch_error = 0.0f - estimated_pitch;
+            float pitch_correction = pitch_error * current_config->pitch_gain;
+            Serial.printf("Pitch correction: %.2f\n", pitch_correction);
+        }
+
+        if (current_config->stabilize_roll) {
+            float roll_error = 0.0f - estimated_roll;
+            float roll_correction = roll_error * current_config->roll_gain;
+            Serial.printf("Roll correction: %.2f\n", roll_correction);
+        }
+
+        if (current_config->stabilize_yaw) {
+            float yaw_error = 0.0f - estimated_yaw;
+            float yaw_correction = yaw_error * current_config->yaw_gain;
+            Serial.printf("Yaw correction: %.2f\n", yaw_correction);
+        }
+
+        // --- Debug output ---
+        Serial.printf("TEMP: %.2f°C | ACC[g]: X=%.2f Y=%.2f Z=%.2f | "
+                      "GYRO[dps]: X=%.2f Y=%.2f Z=%.2f | t=%lu\n",
                       temp_c, ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, millis());
+
+        parsed++;
     }
 
-    // If bytes didn’t align to FRAME_BYTES, you can log once:
+    // --- Misalignment check ---
     if (index != bytes_to_read) {
         Serial.printf("[BMI323 FIFO] Misalign: read=%u, used=%d\n", bytes_to_read, index);
     }
+
+    // --- Summary ---
+    if (parsed || skipped) {
+        Serial.printf("[BMI323 FIFO] Parsed=%d, Skipped=%d\n", parsed, skipped);
+    }
 }
+
 
 // ----------------- Helper: dump critical regs -----------------
 static void bmi323_debug_readback() {
@@ -584,15 +620,15 @@ bool bmi323_accel_calibrate_all(AccelCalibration* cal) {
     for (int i = 0; i < ACCEL_SAMPLES; i++) {
         float ax, ay, az;
         if (!bmi323_read_accel(&ax, &ay, &az)) return false;
-        sum_x += ax;
-        sum_y += ay;
-        sum_z += az;
+        sum_x += ax / 4096.0f; // Convert to g;
+        sum_y += ay / 4096.0f; // Convert to g;;
+        sum_z += az / 4096.0f; // Convert to g;;
         delay(5);
     }
 
     cal->bias_x = sum_x / ACCEL_SAMPLES;
     cal->bias_y = sum_y / ACCEL_SAMPLES;
-    cal->bias_z = sum_z / ACCEL_SAMPLES;
+    cal->bias_z = (sum_z / ACCEL_SAMPLES )- 1.0f; // Adjust for gravity;
 
     return true;
 }
