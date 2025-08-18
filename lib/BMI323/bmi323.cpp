@@ -417,110 +417,147 @@ void bmi323_setup_fifo() {
 
 
 // Robust FIFO read
-// ----------------- Public: service FIFO when ISR set -----------------
-// --- Best merged FIFO reader ---
+
+// helper: compute current FIFO frame size (bytes) based on FIFO_CONF
+static uint16_t bmi323_frame_size_bytes_from_conf() {
+    uint16_t fifo_conf = bmi323_readRegister(REG_FIFO_CONF); // same reg you use elsewhere
+    uint16_t words = 0;
+    // bit layout used in your code: bit8 = time, bit9 = acc, bit10 = gyr, bit11 = temp
+    if (fifo_conf & (1 << 9))  words += 3; // accel (3 words)
+    if (fifo_conf & (1 << 10)) words += 3; // gyro  (3 words)
+    if (fifo_conf & (1 << 11)) words += 1; // temp  (1 word)
+    if (fifo_conf & (1 << 8))  words += 1; // sensor time (1 word)
+    return words * 2; // convert words -> bytes
+}
+
+// Best-of-both merged FIFO reader: supports optional sensor-time word
 void bmi323_read_fifo() {
     if (!bmi323_fifo_ready) return;
     bmi323_fifo_ready = false;
 
 #if USE_INT_LATCH
-    // In latched mode, clear INT1 status by reading the status register
+    // Clear latched INT1 if using latched mode
     (void)bmi323_readRegister(REG_INT_STATUS_INT1);
 #endif
 
-    // --- Read FIFO length ---
+    // get current fifo config & derive whether time/temp are present
+    uint16_t fifo_conf = bmi323_readRegister(REG_FIFO_CONF);
+    const bool fifo_time_en = (fifo_conf & (1 << 8)) != 0;
+    const bool fifo_acc_en  = (fifo_conf & (1 << 9)) != 0;
+    const bool fifo_gyr_en  = (fifo_conf & (1 << 10)) != 0;
+    const bool fifo_temp_en = (fifo_conf & (1 << 11)) != 0;
+
+    // compute expected frame size from FIFO_CONF (safe fallback to your FRAME_BYTES)
+    uint16_t frame_bytes = bmi323_frame_size_bytes_from_conf();
+    if (frame_bytes == 0) frame_bytes = FRAME_BYTES; // fallback (likely 14)
+
+    // Read FIFO length (words)
     uint16_t fifo_fill_words = bmi323_readRegister(REG_FIFO_LENGTH) & 0x07FF;
     if (fifo_fill_words == 0) return;
 
     int bytes_to_read = fifo_fill_words * 2;
     if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
 
-    // --- SPI dummy byte handling ---
+    // SPI burst read: many drivers expect a dummy byte first. You're using the "raw + 1" copy
     uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
-    bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read + 1); // first byte = dummy
-    memcpy(fifo_buffer, raw + 1, bytes_to_read);             // skip dummy
+    bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read + 1); // read with one leading dummy
+    memcpy(fifo_buffer, raw + 1, bytes_to_read);             // copy into working buffer (skip dummy)
 
     int index = 0;
     int parsed = 0, skipped = 0;
 
-    while (index + FRAME_BYTES <= bytes_to_read) {
-        // --- Parse raw frame ---
-        int16_t ax = (fifo_buffer[index + 1] << 8) | fifo_buffer[index + 0];
-        int16_t ay = (fifo_buffer[index + 3] << 8) | fifo_buffer[index + 2];
-        int16_t az = (fifo_buffer[index + 5] << 8) | fifo_buffer[index + 4];
+    while (index + (int)frame_bytes <= bytes_to_read) {
+        int cur = index;
+        // parse in the fixed order: accel(3) -> gyro(3) -> temp(1) -> time(1)
+        int16_t ax_raw=0, ay_raw=0, az_raw=0;
+        int16_t gx_raw=0, gy_raw=0, gz_raw=0;
+        int16_t temp_raw = (int16_t)DUMMY_TEMP; // assume dummy until present
+        uint16_t sensor_time_raw = 0;
 
-        int16_t gx = (fifo_buffer[index + 7] << 8) | fifo_buffer[index + 6];
-        int16_t gy = (fifo_buffer[index + 9] << 8) | fifo_buffer[index + 8];
-        int16_t gz = (fifo_buffer[index +11] << 8) | fifo_buffer[index +10];
+        if (fifo_acc_en) {
+            ax_raw = (int16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
+            ay_raw = (int16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
+            az_raw = (int16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
+        }
+        if (fifo_gyr_en) {
+            gx_raw = (int16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
+            gy_raw = (int16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
+            gz_raw = (int16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
+        }
+        if (fifo_temp_en) {
+            temp_raw = (int16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
+        }
+        if (fifo_time_en) {
+            sensor_time_raw = (uint16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
+        }
 
-        int16_t temp_raw = (fifo_buffer[index +13] << 8) | fifo_buffer[index +12];
+        // Sanity check only on accelerometer/gyro words (do not reject frames just because temp is dummy)
+        bool sane = true;
+        // basic bounds check (these are raw 16-bit values; misaligned frames often produce extreme/invalid patterns)
+        if (fifo_acc_en) {
+            if (abs(ax_raw) > 32767 || abs(ay_raw) > 32767 || abs(az_raw) > 32767) sane = false;
+        }
+        if (fifo_gyr_en) {
+            if (abs(gx_raw) > 32767 || abs(gy_raw) > 32767 || abs(gz_raw) > 32767) sane = false;
+        }
 
-        index += FRAME_BYTES;
-
-        // --- Reject dummy frames ---
-        if (ax == DUMMY_ACCEL || gx == DUMMY_GYRO || temp_raw == DUMMY_TEMP) {
+        if (!sane) {
+            // try realign by shifting one byte and retry parsing
+            index++;
             skipped++;
             continue;
         }
 
-        // --- Convert and apply calibration ---
-        float ax_g = ax / 4096.0f - accel_cal.bias_x;
-        float ay_g = ay / 4096.0f - accel_cal.bias_y;
-        float az_g = az / 4096.0f - accel_cal.bias_z;
+        // Convert and apply calibration (adjust divisors to match your ACC/GYR config)
+        // accel: LSB/g depends on range: here you previously used 4096 => ±8g; keep consistent
+        float ax_g = (fifo_acc_en ? (float)ax_raw / 4096.0f : 0.0f) - accel_cal.bias_x;
+        float ay_g = (fifo_acc_en ? (float)ay_raw / 4096.0f : 0.0f) - accel_cal.bias_y;
+        float az_g = (fifo_acc_en ? (float)az_raw / 4096.0f : 0.0f) - accel_cal.bias_z;
 
-        float gx_dps = gx / 16.384f - gyro_cal.bias_x;
-        float gy_dps = gy / 16.384f - gyro_cal.bias_y;
-        float gz_dps = gz / 16.384f - gyro_cal.bias_z;
+        // gyro: you used 16.384 LSB/dps earlier (±2000 dps)
+        float gx_dps = (fifo_gyr_en ? (float)gx_raw / 16.384f : 0.0f) - gyro_cal.bias_x;
+        float gy_dps = (fifo_gyr_en ? (float)gy_raw / 16.384f : 0.0f) - gyro_cal.bias_y;
+        float gz_dps = (fifo_gyr_en ? (float)gz_raw / 16.384f : 0.0f) - gyro_cal.bias_z;
 
-        float temp_c = temp_raw / 512.0f + 23.0f;
-        temp_c = constrain(temp_c, -40.0f, 85.0f);
+        // temp handling: skip dummy 0x8000 (convert only if real)
+        float temp_c = NAN;
+        if (fifo_temp_en && temp_raw != (int16_t)0x8000) {
+            temp_c = (float)temp_raw / 512.0f + 23.0f;
+            temp_c = constrain(temp_c, -40.0f, 85.0f);
+        }
 
-        // 🚨 filter bogus temps
-       if (temp_c < -20.0f || temp_c > 85.0f) {
-       skipped++;
-       continue;
-     }
-
-        // --- Update orientation ---
+        // Update orientation/controller
         update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
 
-        // --- Mode-based stabilization corrections ---
-        if (current_config->stabilize_pitch) {
-            float pitch_error = 0.0f - estimated_pitch;
-            float pitch_correction = pitch_error * current_config->pitch_gain;
-            Serial.printf("Pitch correction: %.2f\n", pitch_correction);
+        // Print: print sensor_time_raw (raw), and also software timestamp for easy correlation
+        Serial.print("S_T:0x");
+        Serial.print(sensor_time_raw, HEX);
+        Serial.printf(" | ms:%lu | ", millis());
+
+        if (!isnan(temp_c)) {
+            Serial.printf("TEMP: %.2f°C | ", temp_c);
+        } else {
+            Serial.print("TEMP: [skip] | ");
         }
 
-        if (current_config->stabilize_roll) {
-            float roll_error = 0.0f - estimated_roll;
-            float roll_correction = roll_error * current_config->roll_gain;
-            Serial.printf("Roll correction: %.2f\n", roll_correction);
-        }
-
-        if (current_config->stabilize_yaw) {
-            float yaw_error = 0.0f - estimated_yaw;
-            float yaw_correction = yaw_error * current_config->yaw_gain;
-            Serial.printf("Yaw correction: %.2f\n", yaw_correction);
-        }
-
-        // --- Debug output ---
-        Serial.printf("TEMP: %.2f°C | ACC[g]: X=%.2f Y=%.2f Z=%.2f | "
-                      "GYRO[dps]: X=%.2f Y=%.2f Z=%.2f | t=%lu\n",
-                      temp_c, ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, millis());
+        Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
+                      ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
 
         parsed++;
+        index += frame_bytes; // advance by the active frame size
     }
 
-    // --- Misalignment check ---
+    // Misalignment diagnostic
     if (index != bytes_to_read) {
-        Serial.printf("[BMI323 FIFO] Misalign: read=%u, used=%d\n", bytes_to_read, index);
+        Serial.printf("[BMI323 FIFO] Misalign: read=%u, used=%d (frame_bytes=%u)\n",
+                      bytes_to_read, index, (unsigned)frame_bytes);
     }
 
-    // --- Summary ---
     if (parsed || skipped) {
         Serial.printf("[BMI323 FIFO] Parsed=%d, Skipped=%d\n", parsed, skipped);
     }
 }
+
 
 
 // ----------------- Helper: dump critical regs -----------------
