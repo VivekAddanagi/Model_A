@@ -300,59 +300,32 @@ FlightMode select_flight_mode() {
 // Global calibration biases (from your calibration step)
 
 // Update orientation using Complementary Filter
-void update_orientation(float ax, float ay, float az,
-                        float gx, float gy, float gz) {
-    // Complementary filter constant (tuneable)
+void update_orientation_dt(float ax, float ay, float az,
+                           float gx, float gy, float gz, float dt) {
     const float alpha = 0.98f;
+    if (dt <= 0.0f || dt > 0.1f) return;
 
-    // Compute delta time since last update
-    unsigned long now = millis();
-    float dt = (last_update_time > 0) ? (now - last_update_time) / 1000.0f : 0.0f;
-    last_update_time = now;
+    float acc_pitch = atan2f(-ax, sqrtf(ay*ay + az*az)) * 180.0f / PI;
+    float acc_roll  = atan2f( ay, az ) * 180.0f / PI;
 
-    if (dt <= 0.0f || dt > 0.1f) {
-        // If dt is too small or too big (e.g. sensor glitch), skip update
-        return;
+    float use_alpha = alpha;
+    float acc_mag = sqrtf(ax*ax + ay*ay + az*az);
+    if (fabsf(acc_mag - 1.0f) > 0.3f) {
+        // ignore accel this sample → alpha=1
+        use_alpha = 1.0f;
     }
 
-    // --------- Step 1: Apply gyro calibration (bias removal) ---------
-   // gx -= gyro_cal.bias_x;
-   // gy -= gyro_cal.bias_y;
-   // gz -= gyro_cal.bias_z;
+    estimated_pitch = use_alpha * (estimated_pitch + gx * dt) + (1.0f - use_alpha) * acc_pitch;
+    estimated_roll  = use_alpha * (estimated_roll  + gy * dt) + (1.0f - use_alpha) * acc_roll;
+    estimated_yaw  += gz * dt;
 
-    // --------- Step 2: Gyro integration ---------
-    float gyro_pitch_delta = gx * dt;  // gx in dps
-    float gyro_roll_delta  = gy * dt;
-    float gyro_yaw_delta   = gz * dt;
-
-    // --------- Step 3: Accel tilt estimate ---------
-    float acc_pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 180.0f / PI;
-    float acc_roll  = atan2f(ay, az) * 180.0f / PI;
-
-    // --------- Step 4: Complementary filter fusion (Roll & Pitch) ---------
-    estimated_pitch = alpha * (estimated_pitch + gyro_pitch_delta) + (1.0f - alpha) * acc_pitch;
-    estimated_roll  = alpha * (estimated_roll  + gyro_roll_delta) + (1.0f - alpha) * acc_roll;
-
-    // --------- Step 5: Yaw (gyro only, no accel correction) ---------
-    estimated_yaw += gyro_yaw_delta;
-
-    // Keep yaw bounded [-180, 180]
     if (estimated_yaw > 180.0f)  estimated_yaw -= 360.0f;
     if (estimated_yaw < -180.0f) estimated_yaw += 360.0f;
 
-    // --------- Step 6: Sanity check for accel correction ---------
-    float acc_mag = sqrtf(ax*ax + ay*ay + az*az);
-    if (fabs(acc_mag - 1.0f) > 0.3f) {
-        // If accelerometer magnitude deviates too much from 1g,
-        // ignore accelerometer correction (likely in free fall or vibration)
-        estimated_pitch = estimated_pitch + gyro_pitch_delta;
-        estimated_roll  = estimated_roll  + gyro_roll_delta;
-    }
-
-    // Debug print (for testing only)
     Serial.printf("ROLL: %.2f | PITCH: %.2f | YAW: %.2f\n",
                   estimated_roll, estimated_pitch, estimated_yaw);
 }
+
 
 
 #define FIFO_FRAME_SIZE 16  // 6 (accel) + 6 (gyro) + 2 (temp) + 2 (sensor time)
@@ -446,6 +419,8 @@ void bmi323_setup_fifo() {
     uint16_t err = bmi323_readRegister(REG_ERR_REG);
     if (err) Serial.printf("[BMI323 ERROR] ERR_REG=0x%04X\n", err);
     bmi323_debug_readback();
+    imu_filters_init(200.0f);
+
 }
 
 
@@ -471,7 +446,42 @@ static uint16_t bmi323_frame_size_bytes_from_conf() {
     return words * 2; // convert words -> bytes
 }
 
+// low-pass filter for gyro/accel data
+struct Lpf1 {
+    float y = 0, a = 0;
+    void init(float cutoff_hz, float sample_hz) {
+        float rc = 1.0f / (2.0f * PI * cutoff_hz);
+        a = 1.0f / (1.0f + rc * sample_hz);
+    }
+    float step(float x) {
+        y += a * (x - y);
+        return y;
+    }
+};
+
+// Instances for IMU axes
+Lpf1 lpf_gx, lpf_gy, lpf_gz;
+Lpf1 lpf_ax, lpf_ay, lpf_az;
+
+// Call once after IMU ODR is known
+void imu_filters_init(float imu_hz) {
+    lpf_gx.init(60.0f, imu_hz);
+    lpf_gy.init(60.0f, imu_hz);
+    lpf_gz.init(60.0f, imu_hz);
+
+    lpf_ax.init(30.0f, imu_hz);
+    lpf_ay.init(30.0f, imu_hz);
+    lpf_az.init(30.0f, imu_hz);
+}
+
+
 // Best-of-both merged FIFO reader: supports optional sensor-time word
+
+    // Globals
+static bool have_bmi_time = false;
+static uint16_t last_bmi_st = 0;
+static float    bmi_time_lsb_sec = 0.0000390625f; // TODO: set from datasheet/config
+
 void bmi323_read_fifo() {
     if (!bmi323_fifo_ready) return;
     bmi323_fifo_ready = false;
@@ -499,20 +509,19 @@ void bmi323_read_fifo() {
     int bytes_to_read = fifo_fill_words * 2;
     if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
 
-    // SPI burst read: many drivers expect a dummy byte first. You're using the "raw + 1" copy
+    // SPI burst read: many drivers expect a dummy byte first
     uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
-    bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read + 1); // read with one leading dummy
-    memcpy(fifo_buffer, raw + 1, bytes_to_read);             // copy into working buffer (skip dummy)
+    bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read + 1);
+    memcpy(fifo_buffer, raw + 1, bytes_to_read);  // skip dummy
 
     int index = 0;
     int parsed = 0, skipped = 0;
 
     while (index + (int)frame_bytes <= bytes_to_read) {
         int cur = index;
-        // parse in the fixed order: accel(3) -> gyro(3) -> temp(1) -> time(1)
         int16_t ax_raw=0, ay_raw=0, az_raw=0;
         int16_t gx_raw=0, gy_raw=0, gz_raw=0;
-        int16_t temp_raw = (int16_t)DUMMY_TEMP; // assume dummy until present
+        int16_t temp_raw = (int16_t)DUMMY_TEMP;
         uint16_t sensor_time_raw = 0;
 
         if (fifo_acc_en) {
@@ -532,9 +541,8 @@ void bmi323_read_fifo() {
             sensor_time_raw = (uint16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
         }
 
-        // Sanity check only on accelerometer/gyro words (do not reject frames just because temp is dummy)
+        // Sanity check
         bool sane = true;
-        // basic bounds check (these are raw 16-bit values; misaligned frames often produce extreme/invalid patterns)
         if (fifo_acc_en) {
             if (abs(ax_raw) > 32767 || abs(ay_raw) > 32767 || abs(az_raw) > 32767) sane = false;
         }
@@ -543,76 +551,79 @@ void bmi323_read_fifo() {
         }
 
         if (!sane) {
-            // try realign by shifting one byte and retry parsing
             index++;
             skipped++;
             continue;
         }
 
-        // Convert and apply calibration (adjust divisors to match your ACC/GYR config)
-        // accel: LSB/g depends on range: here you previously used 4096 => ±8g; keep consistent
+        // Convert to physical units + calibration
         float ax_g = (fifo_acc_en ? (float)ax_raw / 4096.0f : 0.0f) - accel_cal.bias_x;
         float ay_g = (fifo_acc_en ? (float)ay_raw / 4096.0f : 0.0f) - accel_cal.bias_y;
         float az_g = (fifo_acc_en ? (float)az_raw / 4096.0f : 0.0f) - accel_cal.bias_z;
 
-        // gyro: you used 16.384 LSB/dps earlier (±2000 dps)
         float gx_dps = (fifo_gyr_en ? (float)gx_raw / 16.384f : 0.0f) - gyro_cal.bias_x;
         float gy_dps = (fifo_gyr_en ? (float)gy_raw / 16.384f : 0.0f) - gyro_cal.bias_y;
         float gz_dps = (fifo_gyr_en ? (float)gz_raw / 16.384f : 0.0f) - gyro_cal.bias_z;
 
-        
-        // Save latest accel/gyro for external use
-        latest_ax = ax_g;
-        latest_ay = ay_g;
-        latest_az = az_g;
+        // 🔽 Apply low-pass filters here 🔽
+        gx_dps = lpf_gx.step(gx_dps);
+        gy_dps = lpf_gy.step(gy_dps);
+        gz_dps = lpf_gz.step(gz_dps);
 
-        latest_gx = gx_dps;
-        latest_gy = gy_dps;
-        latest_gz = gz_dps;
+        ax_g   = lpf_ax.step(ax_g);
+        ay_g   = lpf_ay.step(ay_g);
+        az_g   = lpf_az.step(az_g);
 
-        // temp handling: skip dummy 0x8000 (convert only if real)
+        // Save filtered values
+        latest_ax = ax_g; latest_ay = ay_g; latest_az = az_g;
+        latest_gx = gx_dps; latest_gy = gy_dps; latest_gz = gz_dps;
+
+        // Temp handling
         float temp_c = NAN;
         if (fifo_temp_en && temp_raw != (int16_t)0x8000) {
             temp_c = (float)temp_raw / 512.0f + 23.0f;
             temp_c = constrain(temp_c, -40.0f, 85.0f);
         }
 
-        // Update orientation/controller
-        update_orientation(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
+        // --- dt calculation ---
+        float dt = 0.0f;
+        if (fifo_time_en) {
+            if (have_bmi_time) {
+                uint16_t d = (uint16_t)(sensor_time_raw - last_bmi_st); // handles wrap
+                dt = d * bmi_time_lsb_sec;
+            }
+            last_bmi_st = sensor_time_raw;
+            have_bmi_time = true;
+        }
+        if (dt <= 0.0f || dt > 0.02f) { // constrain to reasonable IMU ODR
+            dt = (millis() - last_update_time) * 0.001f; // fallback
+        }
+        last_update_time = millis();
 
-        // Print: print sensor_time_raw (raw), and also software timestamp for easy correlation
+        // Use filtered values + dt in orientation update
+        update_orientation_dt(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, dt);
+
+        // Debug print
         Serial.print("S_T:0x");
         Serial.print(sensor_time_raw, HEX);
         Serial.printf(" | ms:%lu | ", millis());
-
-        if (!isnan(temp_c)) {
-            Serial.printf("TEMP: %.2f°C | ", temp_c);
-        } else {
-            Serial.print("TEMP: [skip] | ");
-        }
-
+        if (!isnan(temp_c)) Serial.printf("TEMP: %.2f°C | ", temp_c);
+        else Serial.print("TEMP: [skip] | ");
         Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
                       ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
 
         parsed++;
-        index += frame_bytes; // advance by the active frame size
-        
+        index += frame_bytes;
     }
 
-    // Misalignment diagnostic
     if (index != bytes_to_read) {
         Serial.printf("[BMI323 FIFO] Misalign: read=%u, used=%d (frame_bytes=%u)\n",
                       bytes_to_read, index, (unsigned)frame_bytes);
     }
-
     if (parsed || skipped) {
         Serial.printf("[BMI323 FIFO] Parsed=%d, Skipped=%d\n", parsed, skipped);
     }
-
-         
-
 }
-
 
 
 // ----------------- Helper: dump critical regs -----------------

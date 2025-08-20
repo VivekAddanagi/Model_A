@@ -47,7 +47,9 @@ void setup() {
     bmi323_init();
 
     Serial.println(F("\nDrone Mode Selector Starting..."));
-    FlightMode selected = select_mode();
+   Serial.println("[DEBUG] Calling select_mode...");
+   FlightMode selected = select_mode();
+   Serial.println("[DEBUG] Mode selected OK");
 
     // Apply selected modes
     apply_bmi323_mode(selected);

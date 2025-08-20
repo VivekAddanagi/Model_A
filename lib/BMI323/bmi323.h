@@ -224,6 +224,8 @@ bool bmi323_read_accel(float* ax, float* ay, float* az);
 uint16_t bmi323_readRegister16(uint8_t reg);
 static void bmi323_debug_readback();  // forward declare
 void bmi323_init_isr(void);
+
+void imu_filters_init(float imu_hz);
 #ifdef __cplusplus
 }
 #endif

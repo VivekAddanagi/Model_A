@@ -24,19 +24,23 @@ FlightMode select_mode() {
     Serial.println(F("\nSelect Flight Mode: 1-STABLE 2-HOVER 3-CRUISE"));
     Serial.print(F("Enter mode (1-3): "));
 
-    while (true) {
+    unsigned long start = millis();
+    while (millis() - start < 5000) {  // wait 5 seconds max
         if (Serial.available()) {
             char ch = Serial.read();
+            Serial.printf("[DEBUG] Got char: %c\n", ch);
             switch (ch) {
                 case '1': return MODE_STABLE;
                 case '2': return MODE_HOVER;
                 case '3': return MODE_CRUISE;
-                default:
-                    Serial.print(F("Invalid input. Enter 1, 2, or 3: "));
+                default: Serial.print(F("Invalid input. Enter 1, 2, or 3: "));
             }
         }
         delay(10);
     }
+
+    Serial.println("No input, defaulting to MODE_STABLE");
+    return MODE_STABLE;
 }
 
 // === Apply BMI323 Mode ===
