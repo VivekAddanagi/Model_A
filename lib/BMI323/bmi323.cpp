@@ -646,8 +646,8 @@ static void bmi323_debug_readback() {
 
 
 static Preferences prefs;
-#define GYRO_SAMPLES 200
-#define ACCEL_SAMPLES 100
+#define GYRO_SAMPLES 500
+#define ACCEL_SAMPLES 500
 
 void bmi323_writeOffset(uint8_t reg, int16_t value, uint8_t bitWidth) {
     // 1. Read current register value

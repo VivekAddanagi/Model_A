@@ -137,26 +137,62 @@ void SensorManager::process_bmp390_fifo() {
 
 // ==================== Altitude Complementary Filter ====================
 
+// ==================== Altitude Complementary Filter ====================
+
 // State variables (single definition here; do NOT duplicate in other files)
 float alt_est = 0.0f;   // Estimated altitude (relative to ground)
 float vel_z   = 0.0f;   // Vertical velocity estimate (m/s)
 
 // Bias & filters
-float acc_z_bias = 0.0f;     // learned on ground (tune/estimate separately)
+float acc_z_bias = accel_cal.bias_z;     // learned on ground (tune/estimate separately)
 float baro_lpf   = NAN;      // low-pass of baro altitude (relative)
 
-// Robust complementary filter with innovation gate
+// Robust complementary filter with averaged seeding
 void SensorManager::updateAltitude(float ax, float ay, float az,
                                    float roll, float pitch,
-                                   float alt_baro, float dt) {
-    constexpr float ALPHA_ALT = 0.97f;   // more weight on accel prediction
-    constexpr float G         = 9.80665f;
+                                   float alt_baro, float dt)
+{
+    // ---- constants ----
+    constexpr float G = 9.80665f;
+    // stationary detector thresholds
+    constexpr float GYRO_STILL_DPS   = 0.5f;   // per-axis or norm threshold
+    constexpr float ACC_MAG_TOL_G    = 0.05f;  // |mag-1g| tolerance
+    // bias learning & velocity leak
+    constexpr float BIAS_BETA        = 0.02f;  // bias IIR when stationary
+    constexpr float LAMBDA_STOP      = 1.5f;   // vel leak (s^-1) when still
+    constexpr float LAMBDA_MOVE      = 0.2f;   // vel leak when moving
+    // complementary filter weights
+    constexpr float ALPHA_STOP       = 0.90f;  // more baro when still
+    constexpr float ALPHA_MOVE       = 0.96f;  // more accel when moving
+    // innovation gate & snapback
+    constexpr float INNOV_GATE_M     = 3.0f;   // meters
+    constexpr float SNAP_THRESH_M    = 0.5f;   // snap to baro when still
 
-    // Smooth baro (alt_baro is already relative to ground)
-    if (isnan(baro_lpf)) baro_lpf = alt_baro;
-    baro_lpf += 0.1f * (alt_baro - baro_lpf);  // simple 1st-order LPF
+    // dt guard
+    if (dt <= 0.0f || dt > 0.05f) dt = 0.01f;
 
-    // Rotate body accel into earth Z (using roll/pitch only)
+    // ---- Initialization with averaging (~1s of baro samples) ----
+    static bool initialized = false;
+    if (!initialized) {
+        static int count = 0;
+        static float sum = 0.0f;
+        sum += alt_baro;
+        count++;
+        if (count >= 100) { // ~1s at 100 Hz
+            float avg = sum / count;
+            baro_lpf = avg;
+            alt_est  = avg;
+            vel_z    = 0.0f;
+            initialized = true;
+            Serial.printf("[ALT INIT] seeded at %.2f m\n", avg);
+        }
+        return; // skip fusion until initialized
+    }
+
+    // ---- baro low-pass (AltG: relative to ground) ----
+    baro_lpf += 0.1f * (alt_baro - baro_lpf);
+
+    // ---- rotate body accel into earth Z (roll/pitch only) ----
     float sinR = sinf(roll * DEG_TO_RAD);
     float cosR = cosf(roll * DEG_TO_RAD);
     float sinP = sinf(pitch * DEG_TO_RAD);
@@ -164,23 +200,50 @@ void SensorManager::updateAltitude(float ax, float ay, float az,
 
     float acc_earth_z_g =  cosP * cosR * az
                          + cosP * sinR * ay
-                         - sinP * ax;
+                         - sinP * ax;     // still in g
 
-    // Convert g -> m/s² and remove gravity & learned bias (1g)
+    // ---- stationary detection ----
+    float acc_mag_g = sqrtf(ax*ax + ay*ay + az*az);
+    float gyro_norm = sqrtf(latest_gx*latest_gx +
+                            latest_gy*latest_gy +
+                            latest_gz*latest_gz);
+    bool acc_ok   = fabsf(acc_mag_g - 1.0f) < ACC_MAG_TOL_G;
+    bool gyro_ok  = gyro_norm < GYRO_STILL_DPS;
+    static int still_count = 0;
+    static int move_count  = 0;
+    if (acc_ok && gyro_ok) { still_count++; move_count = 0; }
+    else { move_count++; still_count = 0; }
+    bool stationary = (still_count >= 5);   // ~50 ms at 100 Hz
+
+    // ---- bias learning when stationary ----
+    if (stationary) {
+        float err = (acc_earth_z_g - 1.0f) - acc_z_bias;
+        acc_z_bias += BIAS_BETA * err;          
+        acc_z_bias = constrain(acc_z_bias, -0.05f, 0.05f);
+    }
+
+    // ---- remove gravity & bias, convert to m/s^2 ----
     float acc_earth_z = (acc_earth_z_g - 1.0f - acc_z_bias) * G;
 
-    // Integrate velocity with clamp to prevent runaway drift
+    // ---- integrate velocity with leak ----
+    float lambda = stationary ? LAMBDA_STOP : LAMBDA_MOVE;
     vel_z += acc_earth_z * dt;
-    vel_z = constrain(vel_z, -5.0f, 5.0f);
+    vel_z -= lambda * vel_z * dt;           
+    vel_z = constrain(vel_z, -2.0f, 2.0f);
 
-    // Predict altitude from velocity integration
+    // ---- predict altitude ----
     float alt_acc = alt_est + vel_z * dt;
 
-    // Innovation gate: ignore insane baro jumps
+    // ---- complementary fusion (adaptive alpha) ----
+    float alpha = stationary ? ALPHA_STOP : ALPHA_MOVE;
     float innov = baro_lpf - alt_acc;
-    constexpr float gate = 3.0f; // meters
-    float k = (fabsf(innov) < gate) ? (1.0f - ALPHA_ALT) : 0.0f;
+    float k = (fabsf(innov) < INNOV_GATE_M) ? (1.0f - alpha) : 0.0f;
 
-    // Fuse prediction with (low-passed) baro
     alt_est = (1.0f - k) * alt_acc + k * baro_lpf;
+
+    // ---- snapback when landed/still and diverged ----
+    if (stationary && fabsf(alt_est - baro_lpf) > SNAP_THRESH_M) {
+        alt_est = baro_lpf;
+        vel_z   = 0.0f;
+    }
 }
