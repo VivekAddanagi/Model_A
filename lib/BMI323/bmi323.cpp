@@ -4,7 +4,7 @@
 #include <math.h>
 #include <Preferences.h>
 
-// === Define global variables here ===
+// === Define global variables here below===
 FlightMode current_mode;
 const FlightModeConfig* current_config = nullptr;
 
