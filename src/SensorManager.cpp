@@ -135,64 +135,38 @@ void SensorManager::process_bmp390_fifo() {
     }
 }
 
-// ==================== Altitude Complementary Filter ====================
+// ==================== Altitude EKF ====================
 
-// ==================== Altitude Complementary Filter ====================
+// State vector
+static float h = 0.0f;   // altitude
+static float v = 0.0f;   // vertical velocity
+static float b = 0.0f;   // accel bias
 
-// State variables (single definition here; do NOT duplicate in other files)
-float alt_est = 0.0f;   // Estimated altitude (relative to ground)
-float vel_z   = 0.0f;   // Vertical velocity estimate (m/s)
+// Covariance matrix (3x3)
+static float P[3][3] = {
+    {1, 0, 0},
+    {0, 1, 0},
+    {0, 0, 0.01}
+};
 
-// Bias & filters
-float acc_z_bias = accel_cal.bias_z;     // learned on ground (tune/estimate separately)
-float baro_lpf   = NAN;      // low-pass of baro altitude (relative)
-
-// Robust complementary filter with averaged seeding
 void SensorManager::updateAltitude(float ax, float ay, float az,
                                    float roll, float pitch,
                                    float alt_baro, float dt)
 {
-    // ---- constants ----
     constexpr float G = 9.80665f;
-    // stationary detector thresholds
-    constexpr float GYRO_STILL_DPS   = 0.5f;   // per-axis or norm threshold
-    constexpr float ACC_MAG_TOL_G    = 0.05f;  // |mag-1g| tolerance
-    // bias learning & velocity leak
-    constexpr float BIAS_BETA        = 0.02f;  // bias IIR when stationary
-    constexpr float LAMBDA_STOP      = 1.5f;   // vel leak (s^-1) when still
-    constexpr float LAMBDA_MOVE      = 0.2f;   // vel leak when moving
-    // complementary filter weights
-    constexpr float ALPHA_STOP       = 0.90f;  // more baro when still
-    constexpr float ALPHA_MOVE       = 0.96f;  // more accel when moving
-    // innovation gate & snapback
-    constexpr float INNOV_GATE_M     = 3.0f;   // meters
-    constexpr float SNAP_THRESH_M    = 0.5f;   // snap to baro when still
 
-    // dt guard
-    if (dt <= 0.0f || dt > 0.05f) dt = 0.01f;
-
-    // ---- Initialization with averaging (~1s of baro samples) ----
+    // ---- Init with baro ----
     static bool initialized = false;
     if (!initialized) {
-        static int count = 0;
-        static float sum = 0.0f;
-        sum += alt_baro;
-        count++;
-        if (count >= 100) { // ~1s at 100 Hz
-            float avg = sum / count;
-            baro_lpf = avg;
-            alt_est  = avg;
-            vel_z    = 0.0f;
-            initialized = true;
-            Serial.printf("[ALT INIT] seeded at %.2f m\n", avg);
-        }
-        return; // skip fusion until initialized
+        h = alt_baro;
+        v = 0.0f;
+        b = 0.0f;
+        initialized = true;
+        Serial.printf("[ALT EKF INIT] seeded at %.2f m\n", alt_baro);
+        return;
     }
 
-    // ---- baro low-pass (AltG: relative to ground) ----
-    baro_lpf += 0.1f * (alt_baro - baro_lpf);
-
-    // ---- rotate body accel into earth Z (roll/pitch only) ----
+    // ---- Rotate accel into earth Z ----
     float sinR = sinf(roll * DEG_TO_RAD);
     float cosR = cosf(roll * DEG_TO_RAD);
     float sinP = sinf(pitch * DEG_TO_RAD);
@@ -200,50 +174,71 @@ void SensorManager::updateAltitude(float ax, float ay, float az,
 
     float acc_earth_z_g =  cosP * cosR * az
                          + cosP * sinR * ay
-                         - sinP * ax;     // still in g
+                         - sinP * ax;
 
-    // ---- stationary detection ----
-    float acc_mag_g = sqrtf(ax*ax + ay*ay + az*az);
-    float gyro_norm = sqrtf(latest_gx*latest_gx +
-                            latest_gy*latest_gy +
-                            latest_gz*latest_gz);
-    bool acc_ok   = fabsf(acc_mag_g - 1.0f) < ACC_MAG_TOL_G;
-    bool gyro_ok  = gyro_norm < GYRO_STILL_DPS;
-    static int still_count = 0;
-    static int move_count  = 0;
-    if (acc_ok && gyro_ok) { still_count++; move_count = 0; }
-    else { move_count++; still_count = 0; }
-    bool stationary = (still_count >= 5);   // ~50 ms at 100 Hz
+    // ---- Prediction ----
+    float h_pred = h + v * dt;
+    float v_pred = v + ((acc_earth_z_g - 1.0f - b) * G) * dt;
+    float b_pred = b;
 
-    // ---- bias learning when stationary ----
-    if (stationary) {
-        float err = (acc_earth_z_g - 1.0f) - acc_z_bias;
-        acc_z_bias += BIAS_BETA * err;          
-        acc_z_bias = constrain(acc_z_bias, -0.05f, 0.05f);
+    // Jacobian F
+    float F[3][3] = {
+        {1, dt, 0},
+        {0, 1, -G*dt},
+        {0, 0, 1}
+    };
+
+    // Process noise (tune!)
+    float Q[3][3] = {
+        {0.001f, 0, 0},
+        {0, 0.01f, 0},
+        {0, 0, 0.00001f}
+    };
+
+    // Covariance prediction P = F P F^T + Q
+    float Pnew[3][3] = {0};
+    for (int i=0; i<3; i++) {
+        for (int j=0; j<3; j++) {
+            for (int k=0; k<3; k++) {
+                for (int l=0; l<3; l++) {
+                    Pnew[i][j] += F[i][k] * P[k][l] * F[j][l];
+                }
+            }
+            Pnew[i][j] += Q[i][j];
+        }
     }
 
-    // ---- remove gravity & bias, convert to m/s^2 ----
-    float acc_earth_z = (acc_earth_z_g - 1.0f - acc_z_bias) * G;
+    h = h_pred; v = v_pred; b = b_pred;
+    memcpy(P, Pnew, sizeof(P));
 
-    // ---- integrate velocity with leak ----
-    float lambda = stationary ? LAMBDA_STOP : LAMBDA_MOVE;
-    vel_z += acc_earth_z * dt;
-    vel_z -= lambda * vel_z * dt;           
-    vel_z = constrain(vel_z, -2.0f, 2.0f);
+    // ---- Update (barometer) ----
+    float z = alt_baro;
+    float y = z - h;    // innovation
 
-    // ---- predict altitude ----
-    float alt_acc = alt_est + vel_z * dt;
+    // Measurement noise (variance, tune for BMP390)
+    constexpr float R = 0.25f;  // ~0.5 m stddev → variance 0.25
 
-    // ---- complementary fusion (adaptive alpha) ----
-    float alpha = stationary ? ALPHA_STOP : ALPHA_MOVE;
-    float innov = baro_lpf - alt_acc;
-    float k = (fabsf(innov) < INNOV_GATE_M) ? (1.0f - alpha) : 0.0f;
+    // H = [1, 0, 0]
+    float S = P[0][0] + R;
+    float K[3] = { P[0][0]/S, P[1][0]/S, P[2][0]/S };
 
-    alt_est = (1.0f - k) * alt_acc + k * baro_lpf;
+    h += K[0] * y;
+    v += K[1] * y;
+    b += K[2] * y;
 
-    // ---- snapback when landed/still and diverged ----
-    if (stationary && fabsf(alt_est - baro_lpf) > SNAP_THRESH_M) {
-        alt_est = baro_lpf;
-        vel_z   = 0.0f;
+    // Covariance update P = (I - K*H) P
+    float Pupd[3][3];
+    for (int i=0; i<3; i++) {
+        for (int j=0; j<3; j++) {
+            Pupd[i][j] = P[i][j] - K[i] * P[0][j];
+        }
     }
+    memcpy(P, Pupd, sizeof(Pupd));
+
+    // ---- Export result ----
+    alt_est = h;
+    vel_z   = v;
+
+    Serial.printf("ALT_EKF: %.2f m | ALT_BARO: %.2f m | Vz: %.2f m/s | bias: %.4f g\n",
+                  alt_est, alt_baro, vel_z, b);
 }

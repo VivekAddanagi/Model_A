@@ -299,33 +299,47 @@ FlightMode select_flight_mode() {
 
 // Global calibration biases (from your calibration step)
 
-// Update orientation using Complementary Filter
+// corrected update_orientation_dt - integrate gyro axes to matching Euler angles
 void update_orientation_dt(float ax, float ay, float az,
-                           float gx, float gy, float gz, float dt) {
-    const float alpha = 0.98f;
-    if (dt <= 0.0f || dt > 0.1f) return;
+                           float gx, float gy, float gz, float dt,
+                           bool gyro_in_rad_per_s = false) {
 
-    float acc_pitch = atan2f(-ax, sqrtf(ay*ay + az*az)) * 180.0f / PI;
-    float acc_roll  = atan2f( ay, az ) * 180.0f / PI;
+    const float alpha = 0.98f;
+    if (!(dt > 0.0f && dt <= 0.1f)) return;
+
+    // Optionally convert rad/s -> deg/s if needed
+    if (gyro_in_rad_per_s) {
+        const float RAD2DEG = 180.0f / M_PI;
+        gx *= RAD2DEG;
+        gy *= RAD2DEG;
+        gz *= RAD2DEG;
+    }
+
+    // Accelerometer-based angles (deg)
+    float acc_pitch = atan2f(-ax, sqrtf(ay*ay + az*az)) * 180.0f / M_PI;
+    float acc_roll  = atan2f( ay, az ) * 180.0f / M_PI;
 
     float use_alpha = alpha;
     float acc_mag = sqrtf(ax*ax + ay*ay + az*az);
-    if (fabsf(acc_mag - 1.0f) > 0.3f) {
-        // ignore accel this sample → alpha=1
-        use_alpha = 1.0f;
-    }
+    if (fabsf(acc_mag - 1.0f) > 0.4f) use_alpha = 1.0f; // ignore accel when magnitude off
 
-    estimated_pitch = use_alpha * (estimated_pitch + gx * dt) + (1.0f - use_alpha) * acc_pitch;
-    estimated_roll  = use_alpha * (estimated_roll  + gy * dt) + (1.0f - use_alpha) * acc_roll;
-    estimated_yaw  += gz * dt;
+    // NOTE THE FIX: gx -> roll, gy -> pitch
+    estimated_roll  = use_alpha * (estimated_roll  + gx * dt) + (1.0f - use_alpha) * acc_roll;
+    estimated_pitch = use_alpha * (estimated_pitch + gy * dt) + (1.0f - use_alpha) * acc_pitch;
+    estimated_yaw  += gz * dt; // yaw remains integrated
 
+    // normalize yaw
     if (estimated_yaw > 180.0f)  estimated_yaw -= 360.0f;
     if (estimated_yaw < -180.0f) estimated_yaw += 360.0f;
 
-    Serial.printf("ROLL: %.2f | PITCH: %.2f | YAW: %.2f\n",
-                  estimated_roll, estimated_pitch, estimated_yaw);
+    // Throttle debug prints to avoid disturbing timing
+    static unsigned long last_dbg = 0;
+    if (millis() - last_dbg > 200) {
+        Serial.printf("ROLL: %.2f | PITCH: %.2f | YAW: %.2f\n",
+                      estimated_roll, estimated_pitch, estimated_yaw);
+        last_dbg = millis();
+    }
 }
-
 
 
 #define FIFO_FRAME_SIZE 16  // 6 (accel) + 6 (gyro) + 2 (temp) + 2 (sensor time)
@@ -710,9 +724,11 @@ bool bmi323_quick_gyro_calibrate(GyroCalibration* cal) {
         bmi323_data_t data;
         if(!bmi323_read(&data)) return false;
         
-        temp_x += data.gx;
-        temp_y += data.gy;
-        temp_z += data.gz;
+        // inside bmi323_quick_gyro_calibrate
+        temp_x += (float)data.gx / 16.384f;
+        temp_y += (float)data.gy / 16.384f;
+        temp_z += (float)data.gz / 16.384f;
+
         delay(10); // 100Hz sampling
     }
 
@@ -731,18 +747,24 @@ bool bmi323_accel_calibrate_all(AccelCalibration* cal) {
     for (int i = 0; i < ACCEL_SAMPLES; i++) {
         float ax, ay, az;
         if (!bmi323_read_accel(&ax, &ay, &az)) return false;
-        sum_x += ax / 4096.0f; // Convert to g;
-        sum_y += ay / 4096.0f; // Convert to g;;
-        sum_z += az / 4096.0f; // Convert to g;;
+        sum_x += ax;
+        sum_y += ay;
+        sum_z += az;
         delay(5);
     }
 
-    cal->bias_x = sum_x / ACCEL_SAMPLES;
-    cal->bias_y = sum_y / ACCEL_SAMPLES;
-    cal->bias_z = sum_z / ACCEL_SAMPLES;
+    float avg_x = sum_x / ACCEL_SAMPLES;
+    float avg_y = sum_y / ACCEL_SAMPLES;
+    float avg_z = sum_z / ACCEL_SAMPLES;
+
+    // Correct handling:
+    cal->bias_x = avg_x;            // should be ≈ 0
+    cal->bias_y = avg_y;            // should be ≈ 0
+    cal->bias_z = avg_z - 1.0f;     // remove gravity, keep ~+1g at rest
 
     return true;
 }
+
 
 
 void apply_gyro_calibration(const GyroCalibration* cal) {

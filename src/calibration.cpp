@@ -132,8 +132,8 @@ void run_calibration_sequence_startup() {
     //save_all_calibration(gyro_cal, accel_cal, pressure_offset);
 
     // Apply calibration
-    apply_gyro_calibration(&gyro_cal);
-    apply_accel_calibration(&accel_cal);
+    //apply_gyro_calibration(&gyro_cal);
+    //apply_accel_calibration(&accel_cal);
    // bmp390_apply_calibration();
 
     // Show results
