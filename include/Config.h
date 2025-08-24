@@ -28,9 +28,9 @@
 // ===============================
 // FIFO
 // ===============================
-#ifndef FIFO_BUFFER_SIZE
-#define FIFO_BUFFER_SIZE 512
-#endif
+//#ifndef FIFO_BUFFER_SIZE
+//#define FIFO_BUFFER_SIZE 512
+//#endif
 
 // ===============================
 // CC2500 Packet Structure

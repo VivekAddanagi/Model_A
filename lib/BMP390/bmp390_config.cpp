@@ -5,7 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-volatile bool fifo_data_ready = false;
+
 
 static const uint8_t IIR_COEFFICIENTS[8] = {0, 1, 3, 7, 15, 31, 63, 127};
 
@@ -251,7 +251,8 @@ int bmp390_start_fifo_continuous_mode(bool pressure_enabled, bool temp_enabled) 
 
     // Step 3: Configure FIFO_CONFIG2 for filtered data, no subsampling
     
-    bmp390_write(BMP390_FIFO_CONFIG2, 0b01000001); // data_select=01 (filtered), subsample=1
+    bmp390_write(BMP390_FIFO_CONFIG2, 0b01000001);  // filtered data + subsample=1
+
 
     // Step 4: Set FIFO watermark level to x bytes
     bmp390_write(BMP390_REG_FIFO_WTM_0, 0x90);  // Low byte
@@ -274,7 +275,7 @@ int bmp390_start_fifo_continuous_mode(bool pressure_enabled, bool temp_enabled) 
         return -1;
     }
 
-    // Step 6: Set Normal mode to start measurement
+    // Step 6: Set Normal mode to start measurement Enables both sensors 
     if (bmp390_set_normal_mode(pressure_enabled, temp_enabled) != 0) {
         Serial.println("[BMP390 ERROR] Failed to set NORMAL mode");
         return -2;
@@ -282,7 +283,7 @@ int bmp390_start_fifo_continuous_mode(bool pressure_enabled, bool temp_enabled) 
 
     uint8_t pwr_ctrl;
     bmp390_read(BMP390_REG_PWR_CTRL, &pwr_ctrl, 1);
-    //Serial.printf("[DEBUG] PWR_CTRL after setting NORMAL: 0x%02X\n", pwr_ctrl);
+    Serial.printf("[DEBUG] PWR_CTRL after setting NORMAL: 0x%02X\n", pwr_ctrl); // 
 
     Serial.println("[BMP390 INFO] FIFO mode active.");
     return 0;
@@ -298,32 +299,30 @@ int bmp390_check_fifo_overflow() {
 
 
 int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, uint16_t *frames_read) {
-    //Serial.println("[DEBUG] Entered bmp390_read_fifo_data()");
-
     *frames_read = 0;
     int valid_count = 0;
-    
 
     uint8_t len_bytes[2];
     if (bmp390_read(BMP390_REG_FIFO_LENGTH_0, len_bytes, 2) != 0) {
         Serial.println("[BMP390 ERROR] Failed to read FIFO length");
         return -1;
     }
-    Serial.printf("[BMP390 DEBUG] FIFO_LEN raw: %02X %02X\n", len_bytes[0], len_bytes[1]);
+
     uint16_t fifo_len = (len_bytes[1] << 8) | len_bytes[0];
-    Serial.printf("[BMP390 DEBUG] Computed FIFO length = %u bytes\n", fifo_len);
 
+    // ✅ Only print when FIFO has data
+    if (fifo_len > 0) {
+        Serial.printf("[BMP390 DEBUG] FIFO_LEN raw: %02X %02X\n", len_bytes[0], len_bytes[1]);
+        Serial.printf("[BMP390 DEBUG] Computed FIFO length = %u bytes\n", fifo_len);
+    }
 
-    // Validate FIFO length
     if (fifo_len == 0) {
-    // No new data yet, not really an error
-    //Serial.println("[BMP390 INFO] FIFO empty, no new samples.");
-    return 0;
-}
-if (fifo_len > BMP390_FIFO_MAX_SIZE) {
-    Serial.printf("[BMP390 ERROR] FIFO length too large: %d bytes\n", fifo_len);
-    return -1;
-}
+        return 0; // nothing new
+    }
+    if (fifo_len > BMP390_FIFO_MAX_SIZE) {
+        Serial.printf("[BMP390 ERROR] FIFO length too large: %d bytes\n", fifo_len);
+        return -1;
+    }
 
     Serial.printf("[BMP390 DEBUG] FIFO reported length: %d bytes\n", fifo_len);
 
@@ -426,14 +425,13 @@ if (fifo_len > BMP390_FIFO_MAX_SIZE) {
         frame_index++;
     }
 
-    // Clear INT flags by reading INT_STATUS
+    
+    // ✅ Clear INT flags at the end
     uint8_t dummy;
     bmp390_read(BMP390_REG_INT_STATUS, &dummy, 1);
 
-    //Serial.printf("[SUMMARY] Valid frames: %d / %d | Ready for altitude processing.\n", valid_count, *frames_read);
     return 0;
 }
-
 
 // ===== Utilities =====
  
@@ -525,15 +523,62 @@ bool BMP390_read_raw_temp_and_press_from_config(bmp390_mode_t mode, int32_t* raw
     return true;
 }
 
-float bmp390_altitude_from_ground(float pressure, float ground_pressure) {
-    return 44330.0f * (1.0f - powf(pressure / ground_pressure, 0.1903f));
+
+volatile bool fifo_data_ready = false;
+static bmp390_fifo_data_t fifo_data[BMP390_FIFO_BUFFER_SIZE];
+float bmp390_latest_altitude_m = 0.0f;
+
+// ISR
+void IRAM_ATTR bmp390_data_ready_isr() {
+    fifo_data_ready = true;
 }
 
-float bmp390_calculate_altitude(float pressure_pa) {
-    float reference_pressure = 101325.0f;
-    return 44330.0f * (1.0f - powf(pressure_pa / reference_pressure, 1.0f / 5.255f));
+// Call once at init
+bool bmp390_begin() {
+    if (!bmp390_init_all()) {
+        Serial.println("[BMP390] Init failed!");
+        return false;
+    }
+
+    // Setup FIFO
+    if (bmp390_fifo_init() != 0 || bmp390_start_fifo_continuous_mode(true, true) != 0) {
+        Serial.println("[BMP390] FIFO init failed!");
+        return false;
+    }
+
+    delay(20); // let first sample accumulate
+
+    // Attach interrupt
+    pinMode(BMP390_INT_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(BMP390_INT_PIN), bmp390_data_ready_isr, RISING);
+
+    return true;
 }
 
 
+// Called periodically (e.g. from SensorManager::update())
+void bmp390_update() {
+    if (!fifo_data_ready) return;
+    fifo_data_ready = false;
+
+    uint16_t frames_read = 0;
+    if (bmp390_read_fifo_data(fifo_data, BMP390_FIFO_BUFFER_SIZE, &frames_read) == 0 && frames_read > 0) {
+        for (uint16_t i = 0; i < frames_read; i++) {
+            if (fifo_data[i].pressure_valid && fifo_data[i].temperature_valid) {
+                float alt_s = bmp390_calculate_altitude(fifo_data[i].pressure);
+
+                // Debug
+                Serial.printf("ms:%lu | TEMP: %.2f °C | P: %.2f Pa | Alt: %.2f m\n",
+                              millis(), fifo_data[i].temperature, fifo_data[i].pressure, alt_s);
+
+                bmp390_latest_altitude_m = alt_s; // ✅ store latest altitude
+            }
+        }
+    }
+}
+
+float bmp390_get_latest_altitude() {
+    return bmp390_latest_altitude_m;
+}
 
 

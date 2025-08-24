@@ -2,19 +2,27 @@
 #include <time.h>
 #include "bmp390.h"
 
-// Global variable to hold pressure offset loaded from NVS or calibration
-float pressure_offset = 0.0f;
+// Global calibration variables
+ float pressure_offset = 101325.0f;   // Default sea-level pressure
+ float sea_level_offset = 101325.0f;  // Calibration reference for altitude
 
 // NVS namespace and keys
 #define BMP390_PREFS_NS       "bmp390"
 #define BMP390_TS_KEY         "ts"
 #define BMP390_PRES_KEY       "pres"
 #define BMP390_TEMP_KEY       "temp"
+#define BMP390_SEALEVEL_KEY "bmp390_sealevel"  // <-- NEW: sea-level reference
 
 // ==================== Calibration ====================
-int bmp390_calibrate_offset() {
-    Serial.println("[CALIB] Starting zero-offset calibration...");
-    delay(1000);  // Let sensor settle after power-up or reset
+// ==================== Globals ====================
+static float filtered_rel_alt = 0.0f;
+static float filtered_abs_alt = 0.0f;
+const float ALT_ALPHA = 0.1f; // smoothing factor (0.05–0.2 recommended)
+
+// ==================== Calibration ====================
+int bmp390_calibrate_offset(float sea_level_pressure) {
+    Serial.println("[CALIB] Starting BMP390 calibration...");
+    delay(1000);
 
     float sum_p = 0.0f, sum_t = 0.0f;
     uint8_t valid_samples = 0;
@@ -28,7 +36,7 @@ int bmp390_calibrate_offset() {
         } else {
             Serial.printf("[CALIB] Sample %02d: [Invalid]\n", i);
         }
-        delay(25);  // Delay between readings
+        delay(25);
     }
 
     if (valid_samples < 30) {
@@ -39,24 +47,51 @@ int bmp390_calibrate_offset() {
     float avg_p = sum_p / valid_samples;
     float avg_t = sum_t / valid_samples;
 
-    uint32_t timestamp = (uint32_t)time(NULL);
-    if (timestamp == 0) timestamp = 1;  // Fallback if RTC not set
+    // Save offsets
+    sea_level_offset = sea_level_pressure;  // <-- FIXED (now valid)
+    pressure_offset  = avg_p;
 
-    // Save to NVS
     Preferences prefs;
     if (!prefs.begin(BMP390_PREFS_NS, false)) {
         Serial.println("[ERROR] Failed to open NVS for BMP390 calibration.");
         return -1;
     }
-
-    prefs.putUInt(BMP390_TS_KEY, timestamp);
-    prefs.putFloat(BMP390_PRES_KEY, avg_p);
+    prefs.putFloat(BMP390_PRES_KEY, pressure_offset);
+    prefs.putFloat(BMP390_SEALEVEL_KEY, sea_level_offset);
     prefs.putFloat(BMP390_TEMP_KEY, avg_t);
     prefs.end();
 
-    pressure_offset = avg_p;
-    Serial.printf("[CALIB] Calibration complete: P=%.2f Pa | T=%.2f °C\n", avg_p, avg_t);
+    Serial.printf("[CALIB] Complete: Ground P=%.2f Pa | SeaLevelRef=%.2f Pa | T=%.2f °C\n",
+                  pressure_offset, sea_level_offset, avg_t);
     return 0;
+}
+
+
+// ==================== Getters ====================
+float bmp390_get_ground_pressure() {
+    return pressure_offset;
+}
+
+float bmp390_get_relative_altitude(float pressure_now) {
+    float raw_alt = 44330.0f * (1.0f - pow(pressure_now / pressure_offset, 0.1903f));
+    filtered_rel_alt = ALT_ALPHA * raw_alt + (1.0f - ALT_ALPHA) * filtered_rel_alt;
+    return filtered_rel_alt;
+}
+
+float bmp390_get_absolute_altitude(float pressure_now) {
+    // Uses calibrated sea-level reference
+    float raw_alt = 44330.0f * (1.0f - pow(pressure_now / sea_level_offset, 0.1903f));
+    return raw_alt;
+}
+
+
+float bmp390_altitude_from_ground(float pressure, float ground_pressure) {
+    return 44330.0f * (1.0f - powf(pressure / ground_pressure, 0.1903f));
+}
+
+float bmp390_calculate_altitude(float pressure_pa) {
+    float reference_pressure = 101325.0f;
+    return 44330.0f * (1.0f - powf(pressure_pa / reference_pressure, 1.0f / 5.255f));
 }
 
 // ==================== Apply Saved Calibration ====================
@@ -89,7 +124,3 @@ int bmp390_apply_calibration() {
     return 0;
 }
 
-// ==================== Getter ====================
-float bmp390_get_ground_pressure() {
-    return pressure_offset;
-}

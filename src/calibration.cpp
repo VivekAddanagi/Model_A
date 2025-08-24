@@ -26,7 +26,7 @@ extern bool bmi323_quick_gyro_calibrate(GyroCalibration* cal);
 extern bool bmi323_accel_calibrate_all(AccelCalibration* cal);
 extern void apply_gyro_calibration(const GyroCalibration* cal);
 extern void apply_accel_calibration(const AccelCalibration* cal);
-extern int bmp390_calibrate_offset(void);
+extern int bmp390_calibrate_offset(float sea_level_pressure);
 extern int bmp390_apply_calibration(void);
 
 extern void wait_for_user_confirmation();
@@ -123,10 +123,13 @@ void run_calibration_sequence_startup() {
         Serial.println(F("[ERROR] Accelerometer calibration failed."));
 
     // BMP390 calibration
-    if (bmp390_calibrate_offset() == 0)
-        Serial.println(F("[BMP390] Pressure sensor calibrated."));
-    else
-        Serial.println(F("[ERROR] BMP390 calibration failed."));
+// BMP390 calibration
+float ground_altitude_m = 0.0f; // if you don't know actual altitude, use 0
+if (bmp390_calibrate_offset(ground_altitude_m) == 0)
+    Serial.println(F("[BMP390] Pressure sensor calibrated."));
+else
+    Serial.println(F("[ERROR] BMP390 calibration failed."));
+
 
     // Save calibration (optional – so we can view later if needed)
     //save_all_calibration(gyro_cal, accel_cal, pressure_offset);

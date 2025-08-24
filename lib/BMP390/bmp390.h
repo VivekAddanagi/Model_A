@@ -79,8 +79,8 @@ extern "C" {
 
 // FIFO
 #define BMP390_FIFO_MAX_SIZE          512
-#ifndef FIFO_BUFFER_SIZE
-#define FIFO_BUFFER_SIZE 512
+#ifndef BMP390_FIFO_BUFFER_SIZE
+#define BMP390_FIFO_BUFFER_SIZE 512
 #endif
 
 
@@ -180,6 +180,11 @@ typedef struct {
 extern BMP390_calib_data_t bmp390_calib;
 extern volatile bool fifo_data_ready;
 
+
+bool bmp390_begin();
+void bmp390_update();
+float bmp390_get_latest_altitude();
+
 // ========================== C API Function Prototypes ==========================
 
 // Init & Power Modes
@@ -219,8 +224,12 @@ bmp390_mode_t get_user_selected_mode();
 void bmp390_print_configuration();
 
 // Calibration & EEPROM
-int bmp390_calibrate_offset(void);
+int bmp390_calibrate_offset(float sea_level_pressure);
+
 int bmp390_apply_calibration(void);
+
+float bmp390_get_relative_altitude(float pressure_now);
+float bmp390_get_absolute_altitude(float pressure_now);
 
 void updateAltitude(float acc_x, float acc_y, float acc_z,
                     float roll, float pitch,

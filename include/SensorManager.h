@@ -8,7 +8,7 @@
 class SensorManager {
 public:
     SensorManager();
-    bool begin();
+    bool begin(float sea_level_pressure);
     void update();
     void calibrateBMI323(bool force);
     void printBMI323Data();
@@ -67,7 +67,7 @@ private:
     static const size_t MAX_FIFO_FRAMES = 32;
     bmp390_fifo_data_t fifo_frames[MAX_FIFO_FRAMES];
 
-    bmp390_fifo_data_t fifo_data[FIFO_BUFFER_SIZE];
+    bmp390_fifo_data_t fifo_data[BMP390_FIFO_BUFFER_SIZE];
     uint16_t frames_available = 0;
 
     // internal helpers

@@ -5,12 +5,12 @@
 #include "SensorManager.h"
 
 // === Global FIFO buffer for BMP390 ===
-bmp390_fifo_data_t fifo_data[FIFO_BUFFER_SIZE];
+bmp390_fifo_data_t fifo_data[BMP390_FIFO_BUFFER_SIZE];
 uint16_t frames_available = 0;
 
 // If your bmp390.h exposes this flag, we use it.
 // (Your existing code already referenced it without local definition)
-//extern volatile bool fifo_data_ready;
+extern volatile bool fifo_data_ready;
 
 
 
@@ -54,10 +54,10 @@ void setup() {
     // Apply selected modes
     apply_bmi323_mode(selected);
     apply_bmp390_mode(selected);
-
+    print_mode_configuration(selected);
     // Calibrate (your unified flow)
     run_calibration_sequence_startup();
-
+    
     // Initialize BMI323 FIFO
     bmi323_setup_fifo();
 

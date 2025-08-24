@@ -8,9 +8,9 @@
 // === BMI323 & BMP390 Profiles ===
 // (Copied from your existing configurations, but stored here for runtime selection)
 static bmp390_profile_t bmp390_profiles[] = {
-    { 0x03, 0x01, 0x07, 0x04 }, // MODE_STABLE
-    { 0x04, 0x01, 0x07, 0x04 }, // MODE_HOVER
-    { 0x05, 0x01, 0x07, 0x04 }  // MODE_CRUISE
+    { 0x03, 0x01, 0x03, 0x03 }, // MODE_STABLE
+    { 0x04, 0x01, 0x07, 0x03 }, // MODE_HOVER
+    { 0x05, 0x01, 0x01, 0x03 }  // MODE_CRUISE
 };
 
 static FlightModeConfig flight_mode_configs[] = {
@@ -67,6 +67,7 @@ void apply_bmi323_mode(FlightMode mode) {
 }
 
 // === Apply BMP390 Config ===
+// === Apply BMP390 Config ===
 void apply_bmp390_mode(FlightMode mode) {
     bmp390_profile_t profile = bmp390_profiles[mode];
 
@@ -77,7 +78,17 @@ void apply_bmp390_mode(FlightMode mode) {
     bmp390_write(BMP390_REG_OSR, osr);
     bmp390_write(BMP390_REG_CONFIG, iir);
     bmp390_write(BMP390_REG_ODR, odr);
+
+    // ✅ After FIFO init, set DATA_SELECT = filtered (01b)
+    uint8_t cfg2 = 0;
+    bmp390_read(BMP390_FIFO_CONFIG2, &cfg2, 1);
+    cfg2 &= ~(0b11 << 0);   // clear data_select bits
+    cfg2 |=  (0b01 << 0);   // 01 = filtered data
+    bmp390_write(BMP390_FIFO_CONFIG2, cfg2);
+
+    Serial.println(F("[BMP390] FIFO DATA_SELECT set to filtered data"));
 }
+
 
 // === Print Configuration ===
 void print_mode_configuration(FlightMode mode) {
