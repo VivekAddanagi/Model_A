@@ -489,14 +489,15 @@ void imu_filters_init(float imu_hz) {
 }
 
 
-// Best-of-both merged FIFO reader: supports optional sensor-time word
+
 
     // Globals
 static bool have_bmi_time = false;
 static uint16_t last_bmi_st = 0;
-static float    bmi_time_lsb_sec = 0.0000390625f; // TODO: set from datasheet/config
+static float    bmi_time_lsb_sec = 0.0000390625f; // set from datasheet/config
 
 void bmi323_read_fifo() {
+  
     if (!bmi323_fifo_ready) return;
     bmi323_fifo_ready = false;
 

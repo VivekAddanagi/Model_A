@@ -77,7 +77,7 @@ void SensorManager::update() {
 // -------------------- BMP390 FIFO processing --------------------
 void SensorManager::process_bmp390_fifo() {
     static unsigned long last_read_ms = 0;
-    const unsigned long READ_INTERVAL_MS = 1; // 100 Hz
+    const unsigned long READ_INTERVAL_MS = 0; // 100 Hz
 
     if (!fifo_data_ready && (millis() - last_read_ms < READ_INTERVAL_MS)) return;
     last_read_ms = millis();

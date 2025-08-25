@@ -123,12 +123,12 @@ void run_calibration_sequence_startup() {
         Serial.println(F("[ERROR] Accelerometer calibration failed."));
 
     // BMP390 calibration
-// BMP390 calibration
-float ground_altitude_m = 0.0f; // if you don't know actual altitude, use 0
-if (bmp390_calibrate_offset(ground_altitude_m) == 0)
+if (bmp390_calibrate_offset(101325.0f /*or 0 => fallback uses avg_p*/) == 0)
     Serial.println(F("[BMP390] Pressure sensor calibrated."));
 else
     Serial.println(F("[ERROR] BMP390 calibration failed."));
+
+
 
 
     // Save calibration (optional – so we can view later if needed)

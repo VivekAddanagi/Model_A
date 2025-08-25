@@ -20,7 +20,7 @@ void setup() {
     while (!Serial);
     delay(3000);
 
-    comManager.begin();
+    //comManager.begin();
 
     bmi323_init();
    // BMP390 Init 
