@@ -188,7 +188,7 @@ float bmp390_get_latest_altitude();
 // ========================== C API Function Prototypes ==========================
 
 // Init & Power Modes
-int bmp390_init_all(void);
+bool bmp390_init_all();
 int bmp390_set_power_mode(uint8_t mode_bits, bool enable_press, bool enable_temp);
 int bmp390_set_sleep_mode(bool enable_press, bool enable_temp);
 int bmp390_set_normal_mode(bool enable_press, bool enable_temp);
@@ -212,7 +212,7 @@ int bmp390_fifo_init(void);
 int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, uint16_t *frames_read);
 int bmp390_check_fifo_overflow(void);
 int bmp390_start_fifo_continuous_mode(bool pressure_enabled, bool temp_enabled);
-void IRAM_ATTR bmp390_isr_handler(void);
+void IRAM_ATTR bmp390_fifo_isr();
 void BMP390_print_raw_before_fifo(void);
 
 // Mode & Filtering Control
@@ -234,6 +234,12 @@ float bmp390_get_absolute_altitude(float pressure_now);
 void updateAltitude(float acc_x, float acc_y, float acc_z,
                     float roll, float pitch,
                     float alt_baro, float dt);
+
+
+
+
+
+
 
 #ifdef __cplusplus
 } // extern "C"

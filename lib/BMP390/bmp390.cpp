@@ -88,18 +88,19 @@ static void bmp390_convert_calib_data(BMP390_calib_data_t *calib) {
  *
  * @return 0 on success, -1 on failure
  */
-int bmp390_init_all() {
+bool bmp390_init_all() {
     Wire.begin(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
 
-    // Try primary address
     bmp390_address = BMP390_I2C_ADDR_PRIMARY;
     if (!bmp390_is_connected()) {
         bmp390_address = BMP390_I2C_ADDR_SECONDARY;
         if (!bmp390_is_connected()) {
             Serial.println("[ERROR] BMP390 not found.");
-            return -1;
+            return false;
         }
     }
+    Serial.print("[BMP390] Using address 0x");
+    Serial.println(bmp390_address, HEX);
 
     // Soft reset
     bmp390_write(BMP390_REG_CMD, BMP390_CMD_SOFT_RESET);
@@ -107,17 +108,26 @@ int bmp390_init_all() {
 
     // Check CHIP ID
     uint8_t chip_id = 0;
-    if (bmp390_read(BMP390_REG_CHIP_ID, &chip_id, 1) != 0 || chip_id != BMP390_CHIP_ID) {
-        Serial.println("[ERROR] Invalid CHIP ID.");
-        return -1;
+    if (bmp390_read(BMP390_REG_CHIP_ID, &chip_id, 1) != 0) {
+        Serial.println("[ERROR] Failed to read CHIP ID register");
+        return false;
     }
+    if (chip_id != BMP390_CHIP_ID) {
+        Serial.print("[ERROR] Invalid CHIP ID: 0x");
+        Serial.println(chip_id, HEX);
+        return false;
+    }
+    Serial.println("[BMP390] CHIP ID OK");
 
-    // Read and parse calibration registers
+    // Read calibration
     uint8_t calib[BMP390_CALIB_DATA_LEN];
-    if (bmp390_read(BMP390_CALIB_DATA_START_ADDR, calib, BMP390_CALIB_DATA_LEN) != 0)
-        return -1;
+    if (bmp390_read(BMP390_CALIB_DATA_START_ADDR, calib, BMP390_CALIB_DATA_LEN) != 0) {
+        Serial.println("[ERROR] Failed to read calibration registers");
+        return false;
+    }
+    Serial.println("[BMP390] Calibration registers read OK");
 
-    // Parse raw calibration bytes
+  // Parse raw calibration bytes
     bmp390_calib.par_t1  = (uint16_t)(calib[1] << 8 | calib[0]);
     bmp390_calib.par_t2  = (uint16_t)(calib[3] << 8 | calib[2]);
     bmp390_calib.par_t3  = (int8_t)calib[4];
@@ -132,13 +142,19 @@ int bmp390_init_all() {
     bmp390_calib.par_p9  = (int16_t)(calib[18] << 8 | calib[17]);
     bmp390_calib.par_p10 = (int8_t)calib[19];
     bmp390_calib.par_p11 = (int8_t)calib[20];
-
-    // Convert to float
     bmp390_convert_calib_data(&bmp390_calib);
 
     // Start in sleep mode
-    return bmp390_write(BMP390_REG_PWR_CTRL, BMP390_MODE_SLEEP);
+    if (bmp390_write(BMP390_REG_PWR_CTRL, BMP390_MODE_SLEEP) != 0) {
+        Serial.println("[ERROR] Failed to enter sleep mode");
+        return false;
+    }
+
+    Serial.println("[BMP390] Init complete");
+    return true;
 }
+
+
 
 // ========================= Compensation =========================
 

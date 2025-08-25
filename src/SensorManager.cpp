@@ -9,7 +9,7 @@
 // If these live in other translation units, keep them extern here:
 extern bmp390_fifo_data_t fifo_data[BMP390_FIFO_BUFFER_SIZE];
 extern uint16_t frames_available;
-extern volatile bool fifo_data_ready;
+
 
 // Latest altitude for EKF
 float latest_altitude_m = 0.0f;
@@ -53,7 +53,7 @@ bool SensorManager::begin(float sea_level_pressure) {
 
 // -------------------- Update (called frequently) --------------------
 void SensorManager::update() {
-   // bmi323_read_fifo();
+    bmi323_read_fifo();
     process_bmp390_fifo();
 
     // EKF and sensor fusion

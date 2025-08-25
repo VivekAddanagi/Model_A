@@ -177,25 +177,6 @@ static bmp390_profile_t bmp390_profiles[] = {
     }
 };
 
-void IRAM_ATTR bmp390_isr_handler() {
-    fifo_data_ready = true;
-}
-
-
-// ===== FIFO Interrupt Setup =====
-int bmp390_fifo_init() {
-    pinMode(BMP390_INT_PIN, INPUT); // ✅ Use INPUT (not INPUT_PULLUP) for push-pull output
-    attachInterrupt(digitalPinToInterrupt(BMP390_INT_PIN), bmp390_isr_handler, FALLING); // ✅ Active-low INT requires FALLING
-
-    // INT_CTRL = 0b00011100 = 0x1C
-    // - Bit 0: int_od = 0 (push-pull)
-    // - Bit 1: int_level = 0 (active low)
-    // - Bit 2: int_latch = 1 (latched)
-    // - Bit 3: fwtm_en = 1 (FIFO watermark interrupt)
-    // - Bit 4: ffull_en = 1 (FIFO full interrupt)
-    bmp390_write(BMP390_REG_INT_CTRL, 0x1C); // ✅ Enables both FIFO watermark and full interrupts
-    return 0;
-}
 
 
 // ===== Mode & Sensor Setup =====
@@ -523,62 +504,40 @@ bool BMP390_read_raw_temp_and_press_from_config(bmp390_mode_t mode, int32_t* raw
     return true;
 }
 
-
+// Define the flag (storage is allocated here!)
 volatile bool fifo_data_ready = false;
-static bmp390_fifo_data_t fifo_data[BMP390_FIFO_BUFFER_SIZE];
-float bmp390_latest_altitude_m = 0.0f;
 
-// ISR
-void IRAM_ATTR bmp390_data_ready_isr() {
+// === ISR ===
+void IRAM_ATTR bmp390_fifo_isr() {
     fifo_data_ready = true;
 }
 
-// Call once at init
-bool bmp390_begin() {
-    if (!bmp390_init_all()) {
-        Serial.println("[BMP390] Init failed!");
-        return false;
-    }
+// ===== FIFO Interrupt Setup =====
+int bmp390_fifo_init() {
+    pinMode(BMP390_INT_PIN, INPUT);  // Push-pull output, so no pullup
+    attachInterrupt(digitalPinToInterrupt(BMP390_INT_PIN), bmp390_fifo_isr, FALLING);
 
-    // Setup FIFO
-    if (bmp390_fifo_init() != 0 || bmp390_start_fifo_continuous_mode(true, true) != 0) {
+    // INT_CTRL = 0b00011100 = 0x1C
+    // - Bit 2: int_latch = 1 (latched)
+    // - Bit 3: fwtm_en = 1 (FIFO watermark)
+    // - Bit 4: ffull_en = 1 (FIFO full)
+    if (bmp390_write(BMP390_REG_INT_CTRL, 0x1C) != 0) {
+        return -1;  // failed
+    }
+    return 0; // success
+}
+
+// === Public API ===
+bool bmp390_begin() {
+    // Setup FIFO for continuous pressure + temperature
+    if (bmp390_fifo_init() != 0 || 
+        bmp390_start_fifo_continuous_mode(true, true) != 0) 
+    {
         Serial.println("[BMP390] FIFO init failed!");
         return false;
     }
 
-    delay(20); // let first sample accumulate
-
-    // Attach interrupt
-    pinMode(BMP390_INT_PIN, INPUT);
-    attachInterrupt(digitalPinToInterrupt(BMP390_INT_PIN), bmp390_data_ready_isr, RISING);
-
+    delay(20);  // allow first samples to accumulate
+    Serial.println("[BMP390] Init + FIFO ready");
     return true;
 }
-
-
-// Called periodically (e.g. from SensorManager::update())
-void bmp390_update() {
-    if (!fifo_data_ready) return;
-    fifo_data_ready = false;
-
-    uint16_t frames_read = 0;
-    if (bmp390_read_fifo_data(fifo_data, BMP390_FIFO_BUFFER_SIZE, &frames_read) == 0 && frames_read > 0) {
-        for (uint16_t i = 0; i < frames_read; i++) {
-            if (fifo_data[i].pressure_valid && fifo_data[i].temperature_valid) {
-                float alt_s = bmp390_calculate_altitude(fifo_data[i].pressure);
-
-                // Debug
-                Serial.printf("ms:%lu | TEMP: %.2f °C | P: %.2f Pa | Alt: %.2f m\n",
-                              millis(), fifo_data[i].temperature, fifo_data[i].pressure, alt_s);
-
-                bmp390_latest_altitude_m = alt_s; // ✅ store latest altitude
-            }
-        }
-    }
-}
-
-float bmp390_get_latest_altitude() {
-    return bmp390_latest_altitude_m;
-}
-
-
