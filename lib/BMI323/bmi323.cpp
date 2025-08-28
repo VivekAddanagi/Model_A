@@ -145,11 +145,6 @@ bool bmi323_init(void) {
         return true;
 }
 
-
-
-
-
-
 bool bmi323_read(bmi323_data_t* data) {
     for (uint8_t attempt = 0; attempt < 10; ++attempt) {
         if (bmi323_readRegister(STATUS_REG) & (1 << 7)) break;
@@ -238,9 +233,6 @@ bool bmi323_run_selftest(void) {
     return false;
 }
 
-
-
-
 bool bmi323_set_axis_remap(uint8_t config) {
     bmi323_writeRegister(0x03, config);         // EXT.AXIS_MAP_1
     bmi323_writeRegister(CMD_REG, 0x0300);      // Trigger remap
@@ -267,34 +259,6 @@ bool bmi323_read_accel(float* ax, float* ay, float* az) {
     *ay = data.ay / 4096.0f;
     *az = data.az / 4096.0f;
     return true;
-}
-
-
-
-
-// ------------------------
-// Mode Selection Prompt
-// ------------------------
-FlightMode select_flight_mode() {
-    Serial.println("Select Flight Mode:");
-    Serial.println("  1 - Stable (Leveling)");
-    Serial.println("  2 - Hover (Altitude Hold)");
-    Serial.println("  3 - Cruise (Forward Flight)");
-    Serial.print("Enter choice (1-3): ");
-
-    while (true) {
-        if (Serial.available()) {
-            char ch = Serial.read();
-            switch (ch) {
-                case '1': Serial.println("Selected: Stable Mode"); return MODE_STABLE;
-                case '2': Serial.println("Selected: Hover Mode");  return MODE_HOVER;
-                case '3': Serial.println("Selected: Cruise Mode"); return MODE_CRUISE;
-                default:
-                    Serial.println("Invalid input. Enter 1, 2 or 3:");
-            }
-        }
-        delay(10);
-    }
 }
 
 // Global calibration biases (from your calibration step)
@@ -698,9 +662,6 @@ int16_t bmi323_readOffset(uint8_t reg, uint8_t bitWidth) {
     return val;
 }
 
-
-
-
 void wait_for_user_confirmation() {
     Serial.println("Place the drone level and press any key in Serial Monitor...");
     while (!Serial.available()) {
@@ -816,86 +777,4 @@ void apply_accel_calibration(const AccelCalibration* cal) {
 
    // Serial.printf("[ACCEL CAL] Written offsets: X=%d | Y=%d | Z=%d\n", ox, oy, oz);
    // Serial.printf("[ACCEL CAL] Read back offsets: X=%d | Y=%d | Z=%d\n", rx, ry, rz);
-}
-
-
-
-bool load_calibration_from_flash(GyroCalibration& gyro_cal, AccelCalibration& accel_cal) {
-    prefs.begin("bmi323", true);  // Read-only
-    if (!prefs.isKey("gyro_x")) {
-        prefs.end();
-        Serial.println("[FLASH] No calibration found.");
-        return false;
-    }
-
-    gyro_cal.bias_x = prefs.getFloat("gyro_x");
-    gyro_cal.bias_y = prefs.getFloat("gyro_y");
-    gyro_cal.bias_z = prefs.getFloat("gyro_z");
-    accel_cal.bias_z = prefs.getFloat("accel_z");
-
-    prefs.end();
-
-    Serial.println("[FLASH] Calibration loaded from NVS:");
-    Serial.printf("  Gyro Bias: X=%.2f Y=%.2f Z=%.2f\n", gyro_cal.bias_x, gyro_cal.bias_y, gyro_cal.bias_z);
-    Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.bias_z);
-    return true;
-}
-
-void save_calibration_to_flash(const GyroCalibration& gyro_cal, const AccelCalibration& accel_cal) {
-    prefs.begin("bmi323", false);  // Read-write
-    prefs.putFloat("gyro_x", gyro_cal.bias_x);
-    prefs.putFloat("gyro_y", gyro_cal.bias_y);
-    prefs.putFloat("gyro_z", gyro_cal.bias_z);
-    prefs.putFloat("accel_z", accel_cal.bias_z);
-    prefs.end();
-    Serial.println("[FLASH] Calibration saved to NVS.");
-}
-
-void clear_calibration_flash() {
-    prefs.begin("bmi323", false);
-    prefs.clear();
-    prefs.end();
-    Serial.println("[FLASH] Calibration erased from NVS.");
-}
-
-bool user_requested_recalibration() {
-    Serial.println("Press 'c' to force calibration (within 5 seconds)...");
-
-    unsigned long start = millis();
-    while (millis() - start < 5000) {
-        if (Serial.available()) {
-            char ch = Serial.read();
-            if (ch == 'c' || ch == 'C') return true;
-        }
-        delay(10);
-    }
-    return false;
-}
-
-void perform_calibration_sequence() {
-    wait_for_user_confirmation();  // Ask user to place flat
-
-    if (!bmi323_quick_gyro_calibrate(&gyro_cal)) {
-        Serial.println("[ERROR] Gyro calibration failed.");
-        while (1);
-    }
-
-    if (!bmi323_accel_calibrate_all(&accel_cal)) {
- 
-        Serial.println("[ERROR] Accel  calibration failed.");
-        while (1);
-    }
-
-    save_calibration_to_flash(gyro_cal, accel_cal);
-    apply_gyro_calibration(&gyro_cal);
-    apply_accel_calibration(&accel_cal);
-
-    Serial.println("[CAL] Calibration completed and saved.");
-}
-
-void print_calibration_info() {
-    Serial.println("Calibration Results:");
-    Serial.printf("  Gyro Bias: X=%.2f Y=%.2f Z=%.2f\n",
-                  gyro_cal.bias_x, gyro_cal.bias_y, gyro_cal.bias_z);
-    Serial.printf("  Accel Z Offset: %.3f\n", accel_cal.bias_z);
 }

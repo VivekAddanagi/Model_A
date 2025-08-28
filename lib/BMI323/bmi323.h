@@ -201,21 +201,13 @@ bool bmi323_set_axis_remap(uint8_t map_config);
 uint16_t bmi323_readRegister(uint8_t reg);
 void bmi323_writeRegister(uint8_t reg, uint16_t value);
 bool bmi323_writeExtendedRegister(uint8_t extReg, uint16_t value);
-void configure_sensor_for_calibration();
-void configure_sensor_for_flight();
+
 // Public functions
 bool bmi323_quick_gyro_calibrate(GyroCalibration* cal);
 bool bmi323_accel_calibrate_all(AccelCalibration* cal) ;
 void apply_gyro_calibration(const GyroCalibration* cal);
 void apply_accel_calibration(const AccelCalibration* cal);
-bool load_calibration_from_flash(GyroCalibration& gyro_cal, AccelCalibration& accel_cal);
-void save_calibration_to_flash(const GyroCalibration& gyro_cal, const AccelCalibration& accel_cal);
 void wait_for_user_confirmation();
-bool user_requested_recalibration();
-void clear_calibration_flash();
-void perform_calibration_sequence();
-void print_calibration_info();
-FlightMode select_flight_mode();
 void bmi323_setup_fifo(void);
 void bmi323_read_fifo(void);
 void update_orientation(float ax, float ay, float az, float gx, float gy ,float gz);

@@ -54,7 +54,7 @@ bool SensorManager::begin(float sea_level_pressure) {
 // -------------------- Update (called frequently) --------------------
 void SensorManager::update() {
     bmi323_read_fifo();
-    process_bmp390_fifo();
+   // process_bmp390_fifo();
 
     // EKF and sensor fusion
     float ax = latest_ax;
@@ -73,7 +73,6 @@ void SensorManager::update() {
     updateAltitude(ax, ay, az, roll, pitch, baro_alt, dt);
 }
 
-// -------------------- BMP390 FIFO processing --------------------
 // -------------------- BMP390 FIFO processing --------------------
 void SensorManager::process_bmp390_fifo() {
     static unsigned long last_read_ms = 0;
