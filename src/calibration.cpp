@@ -49,7 +49,8 @@ static uint32_t now_secs() {
 #define CALIB_PRESSURE_KEY  "pressure"
 
 // ===================== Unified Save/Load =====================
-static bool save_all_calibration(const GyroCalibration& gyro,
+/*
+ static bool save_all_calibration(const GyroCalibration& gyro,
                                  const AccelCalibration& accel,
                                  float pressure) {
     Preferences prefs;
@@ -63,6 +64,7 @@ static bool save_all_calibration(const GyroCalibration& gyro,
     prefs.end();
     return true;
 }
+    
 
 static bool load_all_calibration(GyroCalibration& gyro,
                                  AccelCalibration& accel,
@@ -79,6 +81,8 @@ static bool load_all_calibration(GyroCalibration& gyro,
     return true;
 }
 
+
+
 static uint32_t read_calibration_timestamp() {
     Preferences prefs;
     prefs.begin(CALIB_PREFS_NS, true);
@@ -93,6 +97,7 @@ static void erase_all_calibration() {
     prefs.clear(); // Wipes all keys in this namespace
     prefs.end();
 }
+    */
 
 // ===================== Print calibration values =====================
 static void print_calibration_data() {
@@ -110,6 +115,7 @@ void run_calibration_sequence_startup() {
     Serial.println(F("[CALIB] Performing fresh calibration before flight..."));
     wait_for_user_confirmation();
 
+    /*
     // Gyro calibration
     if (bmi323_quick_gyro_calibrate(&gyro_cal))
         Serial.println(F("[BMI323] Gyro calibrated."));
@@ -121,6 +127,8 @@ void run_calibration_sequence_startup() {
         Serial.println(F("[BMI323] Accelerometer (XYZ) calibrated."));
     else
         Serial.println(F("[ERROR] Accelerometer calibration failed."));
+
+        */
 
     // BMP390 calibration
 if (bmp390_calibrate_offset(101325.0f /*or 0 => fallback uses avg_p*/) == 0)

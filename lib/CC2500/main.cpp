@@ -1,3 +1,4 @@
+/*
 #include <Arduino.h>
 #include "CC2500Receiver.h"
 
@@ -32,3 +33,5 @@ void loop() {
 
     delay(20);
 }
+
+*/

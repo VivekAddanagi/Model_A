@@ -84,31 +84,7 @@ int bmp390_force_measurement_both(float *pressure_pa, float *temperature_c) {
     return bmp390_perform_single_forced_measurement(pressure_pa, temperature_c, true, true);
 }
 
-
-
-// === User Mode Selection ===
-bmp390_mode_t get_user_selected_mode() {
-    Serial.println("\n=== Select Flight Mode ===");
-    Serial.println("1. STABLE");
-    Serial.println("2. HOVER");
-    Serial.println("3. CRUISE");
-    Serial.print("Enter mode (1-3): ");
-
-    while (Serial.available() == 0) delay(10);
-    char input = Serial.read();
-    Serial.println(input);
-
-    switch (input) {
-        case '1': return BMP390_MODE_STABLE;
-        case '2': return BMP390_MODE_HOVER;
-        case '3': return BMP390_MODE_CRUISE;
-        default:
-            Serial.println("[WARN] Invalid input, defaulting to STABLE");
-            return BMP390_MODE_STABLE;
-    }
-}
-
-bool BMP390_validate_profile(const bmp390_profile_t* profile) {
+/*bool BMP390_validate_profile(const bmp390_profile_t* profile) {
     // Extended ODR period table to support odr_sel up to 0x11
     static const float odr_periods_ms[] = {
         1000.0,   // 0x00: 1 Hz
@@ -210,6 +186,7 @@ void BMP390_set_flight_mode(bmp390_mode_t mode) {
     // Recommended: Discard initial samples to let IIR filter stabilize
     BMP390_discard_samples(3, mode);
 }
+*/
 
 
 

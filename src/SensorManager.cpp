@@ -5,11 +5,16 @@
 #include <EEPROM.h>
 #include <Arduino.h>
 #include <math.h>
+#include <vector>
+#include <algorithm>
+
 
 // If these live in other translation units, keep them extern here:
 extern bmp390_fifo_data_t fifo_data[BMP390_FIFO_BUFFER_SIZE];
 extern uint16_t frames_available;
 
+extern float pressure_offset;
+ float avg_t;
 
 // Latest altitude for EKF
 float latest_altitude_m = 0.0f;
@@ -53,8 +58,8 @@ bool SensorManager::begin(float sea_level_pressure) {
 
 // -------------------- Update (called frequently) --------------------
 void SensorManager::update() {
-    bmi323_read_fifo();
-   // process_bmp390_fifo();
+   // bmi323_read_fifo();
+    process_bmp390_fifo();
 
     // EKF and sensor fusion
     float ax = latest_ax;
@@ -73,10 +78,20 @@ void SensorManager::update() {
     updateAltitude(ax, ay, az, roll, pitch, baro_alt, dt);
 }
 
-// -------------------- BMP390 FIFO processing --------------------
+
+
+
+// -------------------- BMP390 FIFO processing (stabilized) --------------------
 void SensorManager::process_bmp390_fifo() {
     static unsigned long last_read_ms = 0;
     const unsigned long READ_INTERVAL_MS = 0; // 100 Hz
+
+    // Two-stage low-pass filter
+    static float pressure_filtered = pressure_offset; // calibrated ground pressure
+    static float temp_filtered     = 29.0f;           // approximate initial temp
+    const float ALPHA_FAST = 0.05f;  // moderate smoothing
+    const float ALPHA_SLOW = 0.01f;  // slow smoothing for long-term stability
+    const float TEMP_COEFF = 0.12f;  // Pa/°C temperature compensation
 
     if (!fifo_data_ready && (millis() - last_read_ms < READ_INTERVAL_MS)) return;
     last_read_ms = millis();
@@ -85,39 +100,70 @@ void SensorManager::process_bmp390_fifo() {
     if (bmp390_check_fifo_overflow() > 0)
         Serial.println("[WARN] BMP390 FIFO Overflow detected");
 
+    // Read FIFO
+    uint16_t frames_available = 0;
     int ret = bmp390_read_fifo_data(fifo_data, BMP390_FIFO_BUFFER_SIZE, &frames_available);
     if (ret != 0) {
         Serial.println("[ERROR] BMP390 FIFO read failed");
+        bmp390_write(BMP390_REG_CMD, BMP390_CMD_FIFO_FLUSH);
+        delay(10);
         return;
     }
-
     if (frames_available == 0) return;
+
+    // Collect valid frames
+    std::vector<float> pressures, temps;
+    pressures.reserve(frames_available);
+    temps.reserve(frames_available);
 
     for (int i = 0; i < frames_available; ++i) {
         if (!fifo_data[i].pressure_valid || !fifo_data[i].temperature_valid) continue;
+        pressures.push_back(fifo_data[i].pressure);
+        temps.push_back(fifo_data[i].temperature);
+    }
+    if (pressures.empty()) return;
 
-        float pressure    = fifo_data[i].pressure;
-        float temperature = fifo_data[i].temperature;
+    // Trimmed mean for pressure (remove 10% high/low)
+    std::sort(pressures.begin(), pressures.end());
+    size_t trim = pressures.size() / 10;
+    float pressure_sum = 0;
+    for (size_t i = trim; i < pressures.size() - trim; ++i)
+        pressure_sum += pressures[i];
+    float pressure_avg = pressure_sum / (pressures.size() - 2 * trim);
 
-        float alt_ground  = bmp390_altitude_from_ground(pressure, bmp390_get_ground_pressure());
-        float alt_sea     = bmp390_calculate_altitude(pressure);
+    // Simple average for temperature
+    float temp_sum = 0;
+    for (auto t : temps) temp_sum += t;
+    float temp_avg = temp_sum / temps.size();
 
-        latest_altitude_m = alt_ground;
+    // Apply two-stage low-pass filter with temperature compensation
+    pressure_filtered = ALPHA_FAST * (pressure_avg + TEMP_COEFF * (temp_avg - temp_filtered))
+                        + (1.0f - ALPHA_FAST) * pressure_filtered;
+    pressure_filtered = ALPHA_SLOW * pressure_filtered + (1.0f - ALPHA_SLOW) * pressure_filtered;
+    temp_filtered     = ALPHA_FAST * temp_avg + (1.0f - ALPHA_FAST) * temp_filtered;
 
-        // Optional: throttle debug prints
-        static uint32_t last_debug = 0;
-        if (millis() - last_debug > 0) {
-            last_debug = millis();
+    // Compute altitudes
+    float alt_ground = bmp390_altitude_from_ground(pressure_filtered, bmp390_get_ground_pressure());
+    float alt_sea    = bmp390_calculate_altitude(pressure_filtered);
+    latest_altitude_m = alt_ground;
 
-            // Add timestamp printing similar to BMI323 FIFO
-            Serial.printf(
-                "ms:%lu | TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m\n",
-                millis(), temperature, pressure, alt_ground, alt_sea
-            );
-        }
+    // Auto-update ground pressure if board is stationary
+    static unsigned long last_offset_update = 0;
+    if (millis() - last_offset_update > 60000) { // every 1 min
+        pressure_offset = pressure_filtered;
+        last_offset_update = millis();
+    }
+
+    // Debug print
+    static uint32_t last_debug = 0;
+    if (millis() - last_debug > 0) {
+        last_debug = millis();
+        Serial.printf(
+            "ms:%lu | TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m | Frames=%d\n",
+            millis(), temp_filtered, pressure_filtered, alt_ground, alt_sea, (int)pressures.size()
+        );
     }
 }
-
 
 // -------------------- Altitude EKF --------------------
 static float h = 0.0f;   // altitude

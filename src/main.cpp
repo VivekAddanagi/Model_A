@@ -38,7 +38,7 @@ void setup() {
     apply_bmp390_mode(selected);
     print_mode_configuration(selected);
     run_calibration_sequence_startup();
-
+    delay(500);
     // BMI323 FIFO
     bmi323_setup_fifo();
 

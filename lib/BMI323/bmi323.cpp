@@ -401,7 +401,6 @@ void bmi323_setup_fifo() {
 
 }
 
-
 // Allocate memory here (only once in project)
 float latest_ax = 0.0f;
 float latest_ay = 0.0f;
@@ -451,9 +450,6 @@ void imu_filters_init(float imu_hz) {
     lpf_ay.init(30.0f, imu_hz);
     lpf_az.init(30.0f, imu_hz);
 }
-
-
-
 
     // Globals
 static bool have_bmi_time = false;
@@ -604,7 +600,6 @@ void bmi323_read_fifo() {
     }
 }
 
-
 // ----------------- Helper: dump critical regs -----------------
 static void bmi323_debug_readback() {
     uint16_t err  = bmi323_readRegister(REG_ERR_REG);
@@ -619,10 +614,7 @@ static void bmi323_debug_readback() {
 }
 
 
-
 //   Calibration Structures
-
-
 
 static Preferences prefs;
 #define GYRO_SAMPLES 500
@@ -645,7 +637,6 @@ void bmi323_writeOffset(uint8_t reg, int16_t value, uint8_t bitWidth) {
     // 5. Write back
     bmi323_writeRegister(reg, current);
 }
-
 
 int16_t bmi323_readOffset(uint8_t reg, uint8_t bitWidth) {
     // Read full register

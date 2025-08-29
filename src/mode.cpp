@@ -3,8 +3,6 @@
 #include "bmp390.h"   // Existing BMP390 library
 
 
-
-
 // === BMI323 & BMP390 Profiles ===
 // (Copied from your existing configurations, but stored here for runtime selection)
 static bmp390_profile_t bmp390_profiles[] = {
@@ -28,7 +26,7 @@ FlightMode select_mode() {
     while (millis() - start < 5000) {  // wait 5 seconds max
         if (Serial.available()) {
             char ch = Serial.read();
-            Serial.printf("[DEBUG] Got char: %c\n", ch);
+           // Serial.printf("[DEBUG] Got char: %c\n", ch);
             switch (ch) {
                 case '1': return MODE_STABLE;
                 case '2': return MODE_HOVER;
@@ -53,20 +51,19 @@ void apply_bmi323_mode(FlightMode mode) {
                   mode == MODE_STABLE ? "STABLE" :
                   mode == MODE_HOVER  ? "HOVER"  : "CRUISE");
 
-    Serial.printf("Pitch stabilization: %s\n", current_config->stabilize_pitch ? "ENABLED" : "DISABLED");
-    Serial.printf("Roll stabilization : %s\n", current_config->stabilize_roll  ? "ENABLED" : "DISABLED");
-    Serial.printf("Yaw stabilization  : %s\n", current_config->stabilize_yaw   ? "ENABLED" : "DISABLED");
-    Serial.printf("Altitude hold     : %s\n", current_config->hold_altitude   ? "ENABLED" : "DISABLED");
+   // Serial.printf("Pitch stabilization: %s\n", current_config->stabilize_pitch ? "ENABLED" : "DISABLED");
+    //Serial.printf("Roll stabilization : %s\n", current_config->stabilize_roll  ? "ENABLED" : "DISABLED");
+   // Serial.printf("Yaw stabilization  : %s\n", current_config->stabilize_yaw   ? "ENABLED" : "DISABLED");
+   // Serial.printf("Altitude hold     : %s\n", current_config->hold_altitude   ? "ENABLED" : "DISABLED");
 
-    Serial.printf("Pitch Gain        : %.2f\n", current_config->pitch_gain);
-    Serial.printf("Roll Gain         : %.2f\n", current_config->roll_gain);
-    Serial.printf("Yaw Gain          : %.2f\n", current_config->yaw_gain);
-    Serial.printf("Altitude Gain     : %.2f\n", current_config->altitude_gain);
+   // Serial.printf("Pitch Gain        : %.2f\n", current_config->pitch_gain);
+   // Serial.printf("Roll Gain         : %.2f\n", current_config->roll_gain);
+   // Serial.printf("Yaw Gain          : %.2f\n", current_config->yaw_gain);
+   // Serial.printf("Altitude Gain     : %.2f\n", current_config->altitude_gain);
 
     Serial.println(F("=== BMI323 Mode Applied ==="));
 }
 
-// === Apply BMP390 Config ===
 // === Apply BMP390 Config ===
 void apply_bmp390_mode(FlightMode mode) {
     bmp390_profile_t profile = bmp390_profiles[mode];
