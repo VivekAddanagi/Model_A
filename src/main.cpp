@@ -3,10 +3,16 @@
 #include "bmp390.h"
 #include "ComManager.h"
 #include "SensorManager.h"
+#include "FlightController.h"
+
 
 // === Global Managers ===
 ComManager comManager;
 SensorManager sensorManager;
+
+
+FlightController flightController(&sensorManager);
+
 
 // Prototypes
 FlightMode select_mode();
@@ -14,6 +20,7 @@ void print_mode_configuration(FlightMode mode);
 void apply_bmi323_mode(FlightMode mode);
 void apply_bmp390_mode(FlightMode mode);
 void run_calibration_sequence_startup();
+
 
 void setup() {
     Serial.begin(115200);
@@ -28,6 +35,11 @@ void setup() {
     Serial.println("[BMP390] Init failed!");
     return;
 }
+
+ sensorManager.begin(101325); // sea level pressure default
+
+    // FlightController init
+    flightController.begin(); // sets up motors
 
 
     Serial.println(F("\nDrone Mode Selector Starting..."));
@@ -50,9 +62,16 @@ void setup() {
     delay(1000);
     Serial.println(F("Flight mode configuration applied."));
 }
-
 void loop() {
-    sensorManager.update(); // calls bmp390_process_fifo() internally
-    //comManager.update();
-    delay(2);
+    static uint32_t last_ms = millis();
+    uint32_t now = millis();
+    float dt = (now - last_ms) * 0.001f;
+    last_ms = now;
+    if (dt <= 0.0f || dt > 0.2f) dt = 0.01f; // fallback
+
+    sensorManager.update(); // updates sensors + EKF
+    flightController.update(dt); // update motor outputs based on PID
+
+    delay(2); // maintain sensor update rate
 }
+

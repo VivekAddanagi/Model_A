@@ -578,7 +578,7 @@ void bmi323_read_fifo() {
         // Use filtered values + dt in orientation update
         update_orientation_dt(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, dt);
 
-        // Debug print
+       /* // Debug print
         Serial.print("S_T:0x");
         Serial.print(sensor_time_raw, HEX);
         Serial.printf(" | ms:%lu | ", millis());
@@ -586,6 +586,7 @@ void bmi323_read_fifo() {
         else Serial.print("TEMP: [skip] | ");
         Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
                       ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
+        */
 
         parsed++;
         index += frame_bytes;
@@ -596,7 +597,7 @@ void bmi323_read_fifo() {
                       bytes_to_read, index, (unsigned)frame_bytes);
     }
     if (parsed || skipped) {
-        Serial.printf("[BMI323 FIFO] Parsed=%d, Skipped=%d\n", parsed, skipped);
+       // Serial.printf("[BMI323 FIFO] Parsed=%d, Skipped=%d\n", parsed, skipped);
     }
 }
 

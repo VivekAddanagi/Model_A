@@ -115,7 +115,7 @@ void run_calibration_sequence_startup() {
     Serial.println(F("[CALIB] Performing fresh calibration before flight..."));
     wait_for_user_confirmation();
 
-    /*
+   
     // Gyro calibration
     if (bmi323_quick_gyro_calibrate(&gyro_cal))
         Serial.println(F("[BMI323] Gyro calibrated."));
@@ -128,7 +128,7 @@ void run_calibration_sequence_startup() {
     else
         Serial.println(F("[ERROR] Accelerometer calibration failed."));
 
-        */
+        
 
     // BMP390 calibration
 if (bmp390_calibrate_offset(101325.0f /*or 0 => fallback uses avg_p*/) == 0)

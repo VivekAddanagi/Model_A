@@ -31,7 +31,7 @@ public:
     void updateAltitude(float ax, float ay, float az,
                         float roll, float pitch,
                         float baro_alt, float dt);
-
+     float alt_est = 0.0f;
 
 private:
     // ------- existing BMI323-related members (preserve original names) -------
@@ -78,7 +78,7 @@ private:
  
 
     // Altitude fusion state
-    float alt_est = 0.0f;
+  
     float vel_z   = 0.0f;
 
 

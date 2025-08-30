@@ -270,8 +270,8 @@ int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, u
 
     // ✅ Only print when FIFO has data
     if (fifo_len > 0) {
-        Serial.printf("[BMP390 DEBUG] FIFO_LEN raw: %02X %02X\n", len_bytes[0], len_bytes[1]);
-        Serial.printf("[BMP390 DEBUG] Computed FIFO length = %u bytes\n", fifo_len);
+      //  Serial.printf("[BMP390 DEBUG] FIFO_LEN raw: %02X %02X\n", len_bytes[0], len_bytes[1]);
+       // Serial.printf("[BMP390 DEBUG] Computed FIFO length = %u bytes\n", fifo_len);
     }
 
     if (fifo_len == 0) {
@@ -282,7 +282,7 @@ int bmp390_read_fifo_data(bmp390_fifo_data_t *data_array, uint16_t max_frames, u
         return -1;
     }
 
-    Serial.printf("[BMP390 DEBUG] FIFO reported length: %d bytes\n", fifo_len);
+   // Serial.printf("[BMP390 DEBUG] FIFO reported length: %d bytes\n", fifo_len);
 
     uint8_t buffer[BMP390_FIFO_MAX_SIZE];
     if (bmp390_read(BMP390_REG_FIFO_DATA, buffer, fifo_len) != 0) {
