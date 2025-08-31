@@ -55,8 +55,14 @@ bool CC2500Receiver::receivePacket() {
 
     if (_readRXFIFO(_packet, len, crcOk)) {
         if (_verifyPacket(_packet, len, crcOk)) {
-            _lastPacketTime = millis();
+            unsigned long currentTime = millis();  // ms timestamp
+            unsigned long gap = currentTime - _lastPacketTime;
+
+            _lastPacketTime = currentTime;
             _hasValidPacket = true;
+
+            Serial.printf("[PACKET RECEIVED] Time=%lu ms | Gap=%lu ms\n", currentTime, gap);
+
             return true;
         }
     }
@@ -247,7 +253,7 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     // Wait for GDO0 to indicate end of packet (RX complete)
     unsigned long start = millis();
     while (digitalRead(CC2500_GDO0_PIN) == LOW) {
-        if (millis() - start > 100) {
+        if (millis() - start > 50) {
             Serial.println("[CC2500 TIMEOUT] GDO0 didn't trigger (RX complete not signaled)");
             return false;
         }
