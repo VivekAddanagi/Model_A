@@ -50,8 +50,8 @@ bool CC2500Receiver::receivePacket() {
     uint8_t len = 0;
     bool crcOk;
     delayMicroseconds(20);
-    uint8_t state = _readMARCState();
-    Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
+    //uint8_t state = _readMARCState();
+   // Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
 
     if (_readRXFIFO(_packet, len, crcOk)) {
         if (_verifyPacket(_packet, len, crcOk)) {
@@ -80,6 +80,7 @@ bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& ro
                                           uint8_t& failsafe, uint8_t& photo, uint8_t& video) {
     if (!_hasValidPacket) return false;
 
+    /*
     Serial.print("[RX PACKET] ");
     for (int i = 0; i < CC2500_DATA_BYTES; i++) {
         Serial.printf("0x%02X ", _packet[i]);
@@ -96,6 +97,7 @@ bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& ro
     photo    = _packet[8];
     video    = _packet[9];
 
+*/
     Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d TO=%d FS=%d PH=%d VID=%d\n",
                   yaw, pitch, roll, throttle, mode, takeoff, failsafe, photo, video);
     return true;
@@ -245,10 +247,9 @@ void CC2500Receiver::_loadPATable() {
 }
 
 bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out) {
-    delayMicroseconds(100);
-
-    uint8_t state = _readMARCState();
-    Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
+    
+    // uint8_t state = _readMARCState();
+   // Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
 
     // Wait for GDO0 to indicate end of packet (RX complete)
     unsigned long start = millis();
@@ -296,7 +297,7 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     _processStatusBytes(rssi, lqi_crc, rssi_dbm, lqi, crcOk_out);
 
     Serial.printf("[RX] RSSI: %ddBm, LQI: %u, CRC: %s\n", rssi_dbm, lqi, crcOk_out ? "OK" : "FAIL");
-    Serial.printf("[CC2500 DEBUG] Expected: %d bytes, Got: %d bytes\n", CC2500_PACKET_SIZE, bytes1);
+    // Serial.printf("[CC2500 DEBUG] Expected: %d bytes, Got: %d bytes\n", CC2500_PACKET_SIZE, bytes1);
 
     len = CC2500_PACKET_SIZE;
     return true;
