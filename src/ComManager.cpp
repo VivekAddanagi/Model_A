@@ -12,7 +12,7 @@ bool ComManager::begin() {
 
 void ComManager::update() {
     if (_cc2500.receivePacket()) {
-        if (_cc2500.getLatestControlData(yaw, pitch, roll, throttle, mode, takeoff, failsafe, photo, video)) {
+        if (_cc2500.getLatestControlData(yaw, pitch, roll, throttle, mode, armed , takeoff, failsafe, photo, video)) {
             _newData = true;
         } else {
             _newData = false;

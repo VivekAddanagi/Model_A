@@ -14,7 +14,7 @@ public:
 
     // Access to latest control data
     int8_t yaw, pitch, roll;
-    uint8_t throttle, mode, takeoff, failsafe, photo, video;
+    uint8_t throttle, mode, armed , takeoff, failsafe, photo, video;
 
 private:
     CC2500Receiver _cc2500;

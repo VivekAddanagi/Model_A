@@ -76,11 +76,11 @@ bool CC2500Receiver::receivePacket() {
 }
 
 bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
-                                          uint8_t& throttle, uint8_t& mode, uint8_t& takeoff,
-                                          uint8_t& failsafe, uint8_t& photo, uint8_t& video) {
+                                          uint8_t& throttle, uint8_t& mode, uint8_t& armed,
+                                          uint8_t& takeoff, uint8_t& failsafe,
+                                          uint8_t& photo, uint8_t& video) {
     if (!_hasValidPacket) return false;
 
-    
     Serial.print("[RX PACKET] ");
     for (int i = 0; i < CC2500_DATA_BYTES; i++) {
         Serial.printf("0x%02X ", _packet[i]);
@@ -92,14 +92,15 @@ bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& ro
     roll     = _packet[3];
     throttle = _packet[4];
     mode     = _packet[5];
-    takeoff  = _packet[6];
-    failsafe = _packet[7];
-    photo    = _packet[8];
-    video    = _packet[9];
+    armed    = _packet[6];   // ✅ new: match TX
+    takeoff  = _packet[7];
+    failsafe = _packet[8];
+    photo    = _packet[9];
+    video    = _packet[10];
 
+    Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
+                  yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
 
-    Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d TO=%d FS=%d PH=%d VID=%d\n",
-                  yaw, pitch, roll, throttle, mode, takeoff, failsafe, photo, video);
     return true;
 }
 
@@ -249,7 +250,7 @@ void CC2500Receiver::_loadPATable() {
 bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out) {
     
      uint8_t state = _readMARCState();
-   // Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
+    Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
 
     // Wait for GDO0 to indicate end of packet (RX complete)
     unsigned long start = millis();
@@ -290,8 +291,8 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     digitalWrite(_cs, HIGH);
     SPI.endTransaction();
 
-    uint8_t rssi     = buffer[10];
-    uint8_t lqi_crc  = buffer[11];
+    uint8_t rssi     = buffer[11];
+    uint8_t lqi_crc  = buffer[12];
     int8_t rssi_dbm;
     uint8_t lqi;
     _processStatusBytes(rssi, lqi_crc, rssi_dbm, lqi, crcOk_out);

@@ -39,8 +39,8 @@
 #endif
 
 // =============================== Packet Structure ===============================
-#define CC2500_DATA_BYTES     10
-#define CC2500_PACKET_SIZE    12  // 10 data + 2 status bytes
+#define CC2500_DATA_BYTES     11
+#define CC2500_PACKET_SIZE    13  // 11 data + 2 status bytes
 
 #define CC2500_START_BYTE     0x88
 #define CC2500_RX_STATUS_SIZE 2
@@ -62,8 +62,9 @@ public:
 
     // Data access
     bool getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
-                              uint8_t& throttle, uint8_t& mode, uint8_t& takeoff,
-                              uint8_t& failsafe, uint8_t& photo, uint8_t& video);
+                                          uint8_t& throttle, uint8_t& mode, uint8_t& armed,
+                                          uint8_t& takeoff, uint8_t& failsafe,
+                                          uint8_t& photo, uint8_t& video);
     bool isTimedOut(uint32_t timeoutMs = 200) const;
 
     // Frequency/channel tuning

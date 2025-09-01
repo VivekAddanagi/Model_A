@@ -35,8 +35,8 @@
 // ===============================
 // CC2500 Packet Structure
 // ===============================
-#define CC2500_DATA_BYTES     10
-#define CC2500_PACKET_SIZE    12
+#define CC2500_DATA_BYTES     11
+#define CC2500_PACKET_SIZE    13
 #define CC2500_START_BYTE     0x88
 #define CC2500_RX_STATUS_SIZE 2
 #define RSSI_OFFSET_250K      72
