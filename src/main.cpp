@@ -8,7 +8,8 @@
 // === Global Managers ===
 ComManager comManager;
 SensorManager sensorManager;
-FlightController flightController(&sensorManager);
+FlightController flightController(&sensorManager, &comManager);
+
 
 // Prototypes
 FlightMode select_mode();
@@ -24,7 +25,7 @@ void setup() {
 
     // Initialize CC2500 receiver
     comManager.begin();
-    /*
+    
     // BMI323 Init
     bmi323_init();
 
@@ -59,14 +60,14 @@ void setup() {
 
     delay(1000);
     Serial.println(F("Flight mode configuration applied."));
-    */
+    
 }
 
 void loop() {
 
      // Update RC inputs
     comManager.update();
-  /*  static uint32_t last_ms = millis();
+    static uint32_t last_ms = millis();
     uint32_t now = millis();
     float dt = (now - last_ms) * 0.001f;
     last_ms = now;
@@ -87,8 +88,7 @@ void loop() {
     }
 
     // Update flight controller with dt
-    flightController.update(dt);
-    */
+    flightController.update(dt);  // only dt
 
-    delay(2); // maintain sensor update rate
+    delay(4); // maintain sensor update rate
 }

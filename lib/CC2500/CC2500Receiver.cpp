@@ -250,7 +250,7 @@ void CC2500Receiver::_loadPATable() {
 bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out) {
     
      uint8_t state = _readMARCState();
-    Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
+   // Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
 
     // Wait for GDO0 to indicate end of packet (RX complete)
     unsigned long start = millis();

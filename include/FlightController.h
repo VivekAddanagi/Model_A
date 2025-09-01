@@ -1,5 +1,6 @@
 #pragma once
 #include "SensorManager.h"
+#include "ComManager.h"
 #include <Arduino.h>
 
 // Quad motor pins (assigned as per your hardware)
@@ -20,7 +21,7 @@ struct PID {
 
 class FlightController {
 public:
-    FlightController(SensorManager* sm) : sensor(sm) {}
+    FlightController(SensorManager* s, ComManager* c) : sensor(s), com(c) {}
 
     void begin();
     void update(float dt);
@@ -33,6 +34,8 @@ public:
 
 private:
     SensorManager* sensor;   // <-- pointer to SensorManager
+    ComManager* com;   // add this
+    bool lockoutActive = true;  // start in lockout until stick gesture clears it
 
     PID pid_roll  = {6.0f, 0.0f, 0.5f, 0,0,-500,500};
     PID pid_pitch = {6.0f, 0.0f, 0.5f, 0,0,-500,500};
