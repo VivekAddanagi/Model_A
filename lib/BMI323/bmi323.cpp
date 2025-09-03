@@ -358,71 +358,71 @@ bool bmi323_setup_fifo() {
     Serial.println("[BMI323 FIFO] Start setup");
 
     // 1) Ensure sensors are ACTIVE (High Performance)
-    Serial.println("[BMI323 FIFO] Step 1: Set sensor HP mode");
+   // Serial.println("[BMI323 FIFO] Step 1: Set sensor HP mode");
     //bmi323_writeRegister(REG_ACC_CONF, 0x70A9);
     //bmi323_writeRegister(REG_GYR_CONF, 0x70C9);
     //delay(2);
-    Serial.println("[BMI323 FIFO] Step 1 done");
+    //Serial.println("[BMI323 FIFO] Step 1 done");
 
     // 2) Enable FIFO content (time, acc, gyr, temp)
-    Serial.println("[BMI323 FIFO] Step 2: Enable FIFO content");
+  //  Serial.println("[BMI323 FIFO] Step 2: Enable FIFO content");
     uint16_t fifo_conf = bmi323_readRegister(REG_FIFO_CONF);
-    Serial.printf("[BMI323 FIFO] Current FIFO_CONF=0x%04X\n", fifo_conf);
+  //  Serial.printf("[BMI323 FIFO] Current FIFO_CONF=0x%04X\n", fifo_conf);
     fifo_conf |= (1 << 8);   // fifo_time_en
     fifo_conf |= (1 << 9);   // fifo_acc_en
     fifo_conf |= (1 << 10);  // fifo_gyr_en
     fifo_conf |= (1 << 11);  // fifo_temp_en
     bmi323_writeRegister(REG_FIFO_CONF, fifo_conf);
-    Serial.println("[BMI323 FIFO] Step 2 done");
+   // Serial.println("[BMI323 FIFO] Step 2 done");
 
     // 3) Watermark
-    Serial.println("[BMI323 FIFO] Step 3: Set FIFO watermark");
+   // Serial.println("[BMI323 FIFO] Step 3: Set FIFO watermark");
     uint16_t wtm_words = (uint16_t)(WATERMARK_FRAMES * WORDS_PER_FRAME);
     bmi323_writeRegister(REG_FIFO_WTM, wtm_words);
-    Serial.printf("[BMI323 FIFO] FIFO_WTM set to %d words\n", wtm_words);
+   // Serial.printf("[BMI323 FIFO] FIFO_WTM set to %d words\n", wtm_words);
 
     // 4) Map FIFO watermark → INT1
-    Serial.println("[BMI323 FIFO] Step 4: Map FIFO WTM to INT1");
+  //  Serial.println("[BMI323 FIFO] Step 4: Map FIFO WTM to INT1");
     uint16_t int_map2 = bmi323_readRegister(REG_INT_MAP2);
-    Serial.printf("[BMI323 FIFO] INT_MAP2 before=0x%04X\n", int_map2);
+   // Serial.printf("[BMI323 FIFO] INT_MAP2 before=0x%04X\n", int_map2);
     int_map2 &= ~(0b11 << 12); // clear fifo_wm map
     int_map2 |=  (0b01 << 12); // map fifo_wm to INT1
     bmi323_writeRegister(REG_INT_MAP2, int_map2);
-    Serial.println("[BMI323 FIFO] Step 4 done");
+  //  Serial.println("[BMI323 FIFO] Step 4 done");
 
     // 5) Configure INT1 output
-    Serial.println("[BMI323 FIFO] Step 5: Configure INT1 output");
+   // Serial.println("[BMI323 FIFO] Step 5: Configure INT1 output");
     uint16_t io = bmi323_readRegister(REG_IO_INT_CTRL);
-    Serial.printf("[BMI323 FIFO] IO_INT_CTRL before=0x%04X\n", io);
+  //  Serial.printf("[BMI323 FIFO] IO_INT_CTRL before=0x%04X\n", io);
     io |= (1 << 0);  // int1_lvl = 1 (active high)
     io &= ~(1 << 1); // int1_od  = 0 (push-pull)
     io |= (1 << 2);  // int1_output_en = 1
     bmi323_writeRegister(REG_IO_INT_CTRL, io);
-    Serial.println("[BMI323 FIFO] Step 5 done");
+   // Serial.println("[BMI323 FIFO] Step 5 done");
 
     // 6) Latch mode
-    Serial.println("[BMI323 FIFO] Step 6: Configure latch/pulse mode");
+   // Serial.println("[BMI323 FIFO] Step 6: Configure latch/pulse mode");
     uint16_t icf = bmi323_readRegister(REG_INT_CONF);
-    Serial.printf("[BMI323 FIFO] INT_CONF before=0x%04X\n", icf);
+   // Serial.printf("[BMI323 FIFO] INT_CONF before=0x%04X\n", icf);
 #if USE_INT_LATCH
     icf |=  (1 << 0); // latched
 #else
     icf &= ~(1 << 0); // pulse
 #endif
     bmi323_writeRegister(REG_INT_CONF, icf);
-    Serial.println("[BMI323 FIFO] Step 6 done");
+   // Serial.println("[BMI323 FIFO] Step 6 done");
 
     // 7) Flush FIFO and attach ISR
-    Serial.println("[BMI323 FIFO] Step 7: Flush FIFO and attach ISR");
+  //  Serial.println("[BMI323 FIFO] Step 7: Flush FIFO and attach ISR");
     bmi323_flush_fifo();
-    Serial.println("[BMI323 FIFO] FIFO flushed");
+  //  Serial.println("[BMI323 FIFO] FIFO flushed");
     bmi323_init_isr();
-    Serial.println("[BMI323 FIFO] ISR attached");
+  //  Serial.println("[BMI323 FIFO] ISR attached");
 
     // 8) Debug/health checks
-    Serial.println("[BMI323 FIFO] Step 8: Health checks");
+  //  Serial.println("[BMI323 FIFO] Step 8: Health checks");
     uint16_t err = bmi323_readRegister(REG_ERR_REG);
-    if (err) Serial.printf("[BMI323 ERROR] ERR_REG=0x%04X\n", err);
+  //  if (err) Serial.printf("[BMI323 ERROR] ERR_REG=0x%04X\n", err);
     bmi323_debug_readback();
     imu_filters_init(200.0f);
     Serial.println("[BMI323 FIFO] Setup complete");
@@ -486,6 +486,7 @@ static uint16_t last_bmi_st = 0;
 static float    bmi_time_lsb_sec = 0.0000390625f; // set from datasheet/config
 
 void bmi323_read_fifo() {
+
   
     if (!bmi323_fifo_ready) return;
     bmi323_fifo_ready = false;
@@ -607,7 +608,7 @@ void bmi323_read_fifo() {
         // Use filtered values + dt in orientation update
         update_orientation_dt(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, dt);
 
-       /* // Debug print
+        // Debug print
         Serial.print("S_T:0x");
         Serial.print(sensor_time_raw, HEX);
         Serial.printf(" | ms:%lu | ", millis());
@@ -615,7 +616,7 @@ void bmi323_read_fifo() {
         else Serial.print("TEMP: [skip] | ");
         Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
                       ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
-        */
+        
 
         parsed++;
         index += frame_bytes;

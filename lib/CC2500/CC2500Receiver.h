@@ -74,11 +74,12 @@ public:
 private:
     // Pins
     uint8_t _cs, _gdo0, _sck, _miso, _mosi;
-
-    // Packet data
+    bool _hasValidPacket = false;
+    uint32_t _lastPacketTime = 0;   // tracks last valid packet timestamp
+    uint32_t _expectedPackets = 0;  // expected count (based on TX interval)
+    uint32_t _receivedPackets = 0;  // successfully received
+    uint32_t _lostPackets = 0;      // estimated lost
     uint8_t _packet[CC2500_PACKET_SIZE];
-    uint32_t _lastPacketTime;
-    bool _hasValidPacket;
 
     struct ControlPacket {
         int8_t yaw;
@@ -112,6 +113,8 @@ private:
     // SPI helpers
     void _select();
     void _deselect();
+
+        
 };
 
 #endif // CC2500_RECEIVER_H

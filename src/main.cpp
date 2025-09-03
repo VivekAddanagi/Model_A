@@ -27,7 +27,7 @@ void setup() {
     comManager.begin();
 
     delay(50);
-    /*
+    
     // BMI323 Init
     bmi323_init();
 
@@ -52,7 +52,7 @@ void setup() {
     apply_bmp390_mode(selected);
     print_mode_configuration(selected);
     run_calibration_sequence_startup();
-    delay(500);
+   // delay(500);
 
     Serial.println("[ERROR] BMI323 FIFO setup started ");
 
@@ -69,16 +69,11 @@ void setup() {
 
     delay(1000);
     Serial.println(F("Flight mode configuration applied."));
-
-    */
     
 }
 
 void loop() {
-
-     // Update RC inputs
-    comManager.update();
-    /*
+    
     static uint32_t last_ms = millis();
     uint32_t now = millis();
     float dt = (now - last_ms) * 0.001f;
@@ -89,7 +84,7 @@ void loop() {
     sensorManager.update();
 
     // Update RC inputs
-    comManager.update();
+   // comManager.update();
 
     // Map RC input to flight controller setpoints if new data received
     if (comManager.hasNewData()) {
@@ -100,9 +95,6 @@ void loop() {
     }
 
     // Update flight controller with dt
-    flightController.update(dt);  // only dt
-
-    */
-
+   // flightController.update(dt);  // only dt
     delay(4); // maintain sensor update rate
 }

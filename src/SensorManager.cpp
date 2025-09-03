@@ -59,7 +59,7 @@ bool SensorManager::begin(float sea_level_pressure) {
 // -------------------- Update (called frequently) --------------------
 void SensorManager::update() {
     bmi323_read_fifo();
-    process_bmp390_fifo();
+   // process_bmp390_fifo();
 
     // EKF and sensor fusion
     float ax = latest_ax;
@@ -159,7 +159,7 @@ void SensorManager::process_bmp390_fifo() {
         pressure_offset = pressure_filtered;
         last_offset_update = millis();
     }
-    /*
+    
     // === Debug print ===
     static uint32_t last_debug = 0;
     if (millis() - last_debug > 0) {
@@ -169,7 +169,7 @@ void SensorManager::process_bmp390_fifo() {
             millis(), t_filt, pressure_filtered, alt_ground, alt_sea, (int)pressures.size()
         );
     }
-        */
+        
 }
 
 // -------------------- Altitude EKF --------------------
