@@ -22,140 +22,7 @@ CC2500Receiver::CC2500Receiver(uint8_t csPin, uint8_t gdo0Pin,
     : _cs(csPin), _gdo0(gdo0Pin), _sck(sckPin), _miso(misoPin), _mosi(mosiPin),
       _lastPacketTime(0), _hasValidPacket(false) {}
 
-void CC2500Receiver::begin() {
-    Serial.println("[CC2500] Initializing SPI and GPIO...");
-    SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, CC2500_CS_PIN);
 
-    pinMode(_cs, OUTPUT);
-    pinMode(_miso, INPUT);
-    pinMode(CC2500_GDO0_PIN, INPUT_PULLUP);
-
-#if defined(ESP32)
-    Serial.printf("[CC2500 DEBUG] GDO0 pin mode: %d, level: %d\n",
-                  getPinMode(CC2500_GDO0_PIN),
-                  digitalRead(CC2500_GDO0_PIN));
-#endif
-
-    digitalWrite(_cs, HIGH);
-
-    _reset();
-    _configureRadio();
-    _printConfigSummary();
-    _loadPATable();
-    _strobeCommand(SRX);
-    Serial.println("[CC2500] Initialization complete.");
-}
-
-bool CC2500Receiver::receivePacket() {
-    uint8_t len = 0;
-    bool crcOk;
-    delayMicroseconds(20);
-    //uint8_t state = _readMARCState();
-   // Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
-
-    if (_readRXFIFO(_packet, len, crcOk)) {
-        if (_verifyPacket(_packet, len, crcOk)) {
-            unsigned long currentTime = millis();  // ms timestamp
-            unsigned long gap = currentTime - _lastPacketTime;
-
-            _lastPacketTime = currentTime;
-            _hasValidPacket = true;
-
-            Serial.printf("[PACKET RECEIVED] Time=%lu ms | Gap=%lu ms\n", currentTime, gap);
-
-            return true;
-        }
-    }
-
-    Serial.println("[CC2500] Invalid packet or CRC failed.");
-    _strobeCommand(SIDLE);
-    _strobeCommand(SFRX);
-    _strobeCommand(SRX);
-    delayMicroseconds(20);
-    return false;
-}
-
-bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
-                                          uint8_t& throttle, uint8_t& mode, uint8_t& armed,
-                                          uint8_t& takeoff, uint8_t& failsafe,
-                                          uint8_t& photo, uint8_t& video) {
-    if (!_hasValidPacket) return false;
-
-    Serial.print("[RX PACKET] ");
-    for (int i = 0; i < CC2500_DATA_BYTES; i++) {
-        Serial.printf("0x%02X ", _packet[i]);
-    }
-    Serial.println();
-
-    yaw      = _packet[1];
-    pitch    = _packet[2];
-    roll     = _packet[3];
-    throttle = _packet[4];
-    mode     = _packet[5];
-    armed    = _packet[6];   // ✅ new: match TX
-    takeoff  = _packet[7];
-    failsafe = _packet[8];
-    photo    = _packet[9];
-    video    = _packet[10];
-
-    Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
-                  yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
-
-    return true;
-}
-
-bool CC2500Receiver::isTimedOut(uint32_t timeoutMs) const {
-    return (millis() - _lastPacketTime) > timeoutMs;
-}
-
-void CC2500Receiver::_reset() {
-    Serial.println("[CC2500 RESET] Starting enhanced reset sequence...");
-    
-    // 1. Put chip in IDLE state first
-    _strobeCommand(SIDLE);
-    delayMicroseconds(100);
-    
-    // 2. Flush RX FIFO
-    _strobeCommand(SFRX);
-    delayMicroseconds(100);
-    
-    // 3. Hardware reset pulse
-    digitalWrite(_cs, HIGH);
-    delay(1);
-    digitalWrite(_cs, LOW);
-    delayMicroseconds(100);
-    digitalWrite(_cs, HIGH);
-    delay(5);  // Extended delay for full reset
-    
-    // 4. Software reset command with proper MISO handling
-    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, CC2500_SPI_MODE)); // Slow speed for reset
-    digitalWrite(_cs, LOW);
-    
-    // Wait for MISO to go low (with inverted logic check if needed)
-    uint32_t timeout = micros() + 5000; // 5ms timeout
-    while(digitalRead(_miso) != LOW) {  // Change to HIGH if your hardware inverts
-        if(micros() > timeout) {
-            Serial.println("[CC2500 WARNING] MISO not low after CS asserted");
-            break;
-        }
-    }
-    
-    SPI.transfer(0x30); // SRES
-    delayMicroseconds(100);
-    digitalWrite(_cs, HIGH);
-    SPI.endTransaction();
-    
-    // 5. Post-reset stabilization
-    delay(10);
-    
-    // 6. Verify reset completed
-    uint8_t partnum = _readRegister(0x30);
-    if(partnum != 0x80) {
-        Serial.printf("[CC2500 ERROR] Reset failed - PARTNUM: 0x%02X (expected 0x80)\n", partnum);
-    } else {
-        Serial.println("[CC2500 RESET] Successful");
-    }
-}
 bool CC2500Receiver::_waitForChipReady() {
     uint32_t start = micros();
     uint32_t timeout = 5000; // 5ms
@@ -174,6 +41,8 @@ bool CC2500Receiver::_waitForChipReady() {
     Serial.printf("[CC2500 ERROR] Timeout waiting for MISO (state: %d)\n", digitalRead(_miso));
     return false;
 }
+
+
 void CC2500Receiver::_writeRegister(uint8_t addr, uint8_t value) {
     SPI.beginTransaction(SPISettings(CC2500_SPI_SPEED, MSBFIRST, CC2500_SPI_MODE));
     digitalWrite(_cs, LOW);
@@ -247,26 +116,167 @@ void CC2500Receiver::_loadPATable() {
     Serial.println("[CC2500 PA TABLE] Loaded.");
 }
 
-bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out) {
+void CC2500Receiver::_reset() {
+    Serial.println("[CC2500 RESET] Starting enhanced reset sequence...");
     
-     uint8_t state = _readMARCState();
-   // Serial.printf("[CC2500 DEBUG] MARCSTATE = 0x%02X\n", state);
-
-    // Wait for GDO0 to indicate end of packet (RX complete)
-    unsigned long start = millis();
-    while (digitalRead(CC2500_GDO0_PIN) == LOW) {
-        if (millis() - start > 50) {
-            Serial.println("[CC2500 TIMEOUT] GDO0 didn't trigger (RX complete not signaled)");
-            return false;
+    // 1. Put chip in IDLE state first
+    _strobeCommand(SIDLE);
+    delayMicroseconds(100);
+    
+    // 2. Flush RX FIFO
+    _strobeCommand(SFRX);
+    delayMicroseconds(100);
+    
+    // 3. Hardware reset pulse
+    digitalWrite(_cs, HIGH);
+    delay(1);
+    digitalWrite(_cs, LOW);
+    delayMicroseconds(100);
+    digitalWrite(_cs, HIGH);
+    delay(5);  // Extended delay for full reset
+    
+    // 4. Software reset command with proper MISO handling
+    SPI.beginTransaction(SPISettings(1000000, MSBFIRST, CC2500_SPI_MODE)); // Slow speed for reset
+    digitalWrite(_cs, LOW);
+    
+    // Wait for MISO to go low (with inverted logic check if needed)
+    uint32_t timeout = micros() + 5000; // 5ms timeout
+    while(digitalRead(_miso) != LOW) {  // Change to HIGH if your hardware inverts
+        if(micros() > timeout) {
+            Serial.println("[CC2500 WARNING] MISO not low after CS asserted");
+            break;
         }
     }
+    
+    SPI.transfer(0x30); // SRES
+    delayMicroseconds(100);
+    digitalWrite(_cs, HIGH);
+    SPI.endTransaction();
+    
+    // 5. Post-reset stabilization
+    delay(10);
+    
+    // 6. Verify reset completed
+    uint8_t partnum = _readRegister(0x30);
+    if(partnum != 0x80) {
+        Serial.printf("[CC2500 ERROR] Reset failed - PARTNUM: 0x%02X (expected 0x80)\n", partnum);
+    } else {
+        Serial.println("[CC2500 RESET] Successful");
+    }
+}
 
-    // Read RXBYTES twice to verify FIFO content (these use _readRegister which is transaction-safe)
+void CC2500Receiver::begin() {
+    Serial.println("[CC2500] Initializing SPI and GPIO...");
+    SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, CC2500_CS_PIN);
+
+    pinMode(_cs, OUTPUT);
+    pinMode(_miso, INPUT);
+    pinMode(CC2500_GDO0_PIN, INPUT);
+
+#if defined(ESP32)
+    Serial.printf("[CC2500 DEBUG] GDO0 pin mode: %d, level: %d\n",
+                  getPinMode(CC2500_GDO0_PIN),
+                  digitalRead(CC2500_GDO0_PIN));
+#endif
+
+    digitalWrite(_cs, HIGH);
+
+    _reset();
+    _configureRadio();
+    _printConfigSummary();
+    _loadPATable();
+    _strobeCommand(SRX);
+    Serial.println("[CC2500] Initialization complete.");
+}
+
+bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
+                                          uint8_t& throttle, uint8_t& mode, uint8_t& armed,
+                                          uint8_t& takeoff, uint8_t& failsafe,
+                                          uint8_t& photo, uint8_t& video) {
+    if (!_hasValidPacket) return false;
+
+    Serial.print("[RX PACKET] ");
+    for (int i = 0; i < CC2500_DATA_BYTES; i++) {
+        Serial.printf("0x%02X ", _packet[i]);
+    }
+    Serial.println();
+
+    yaw      = _packet[1];
+    pitch    = _packet[2];
+    roll     = _packet[3];
+    throttle = _packet[4];
+    mode     = _packet[5];
+    armed    = _packet[6];   // ✅ new: match TX
+    takeoff  = _packet[7];
+    failsafe = _packet[8];
+    photo    = _packet[9];
+    video    = _packet[10];
+
+    Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
+                  yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
+
+    return true;
+}
+
+bool CC2500Receiver::isTimedOut(uint32_t timeoutMs) const {
+    return (millis() - _lastPacketTime) > timeoutMs;
+}
+
+
+void CC2500Receiver::_processStatusBytes(uint8_t rssiByte, uint8_t lqiByte,
+                                         int8_t& rssi_dBm, uint8_t& lqi, bool& crcOk) {
+    if (rssiByte >= 128)
+        rssi_dBm = ((int16_t)rssiByte - 256) / 2 - RSSI_OFFSET_250K;
+    else
+        rssi_dBm = rssiByte / 2 - RSSI_OFFSET_250K;
+
+    lqi = lqiByte & 0x7F;
+    crcOk = (lqiByte & 0x80);
+}
+
+uint8_t CC2500Receiver::_readMARCState() {
+    return _readRegister(0x35) & 0x1F;
+}
+
+
+bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out) {
+    uint8_t state = _readMARCState();
+   // Serial.printf("[CC2500 DEBUG] MARCSTATE at FIFO = 0x%02X\n", state);
+
+    // Wait until at least CC2500_PACKET_SIZE bytes are available in RXFIFO
+    unsigned long t0 = millis();
+    uint8_t n = 0;
+   // Serial.println("[CC2500 DEBUG] Polling RXBYTES until full packet arrives...");
+    while (millis() - t0 < 500) {  // max 500ms timeout
+        n = _readRegister(0x3B) & 0x7F;
+        //Serial.printf("[CC2500 DEBUG] RXBYTES=%u\n", n);
+        if (n >= CC2500_PACKET_SIZE) break;  // full packet ready
+        delay(5);
+    }
+
+    if (n < CC2500_PACKET_SIZE) {
+        Serial.println("[CC2500 DEBUG] Full packet not received within 500ms");
+        return false;
+    }
+
+    // Optional: wait for GDO0 to indicate end of packet
+    Serial.printf("[CC2500 DEBUG] GDO0 level: %d\n", digitalRead(CC2500_GDO0_PIN));
+    unsigned long start = millis();
+    while (digitalRead(CC2500_GDO0_PIN) == LOW) {
+        if (millis() - start > 100) {  // 100ms timeout
+            Serial.println("[CC2500 TIMEOUT] GDO0 didn't trigger (RX complete not signaled)");
+            break; // continue anyway if bytes are available
+        }
+        delay(1);
+    }
+
+    // Read RXBYTES twice to verify FIFO content
     uint8_t bytes1, bytes2;
     do {
         bytes1 = _readRegister(0x3B) & 0x7F;
         bytes2 = _readRegister(0x3B) & 0x7F;
-    } while (bytes1 != bytes2);
+       // Serial.printf("[CC2500 DEBUG] RXBYTES check: bytes1=%u bytes2=%u\n", bytes1, bytes2);
+    } while (bytes1 != bytes2 && millis() - t0 < 500);
 
     if (bytes1 != CC2500_PACKET_SIZE) {
         Serial.printf("[CC2500 FIFO] Unexpected packet size: %u bytes\n", bytes1);
@@ -298,22 +308,11 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     _processStatusBytes(rssi, lqi_crc, rssi_dbm, lqi, crcOk_out);
 
     Serial.printf("[RX] RSSI: %ddBm, LQI: %u, CRC: %s\n", rssi_dbm, lqi, crcOk_out ? "OK" : "FAIL");
-    // Serial.printf("[CC2500 DEBUG] Expected: %d bytes, Got: %d bytes\n", CC2500_PACKET_SIZE, bytes1);
 
     len = CC2500_PACKET_SIZE;
     return true;
 }
 
-void CC2500Receiver::_processStatusBytes(uint8_t rssiByte, uint8_t lqiByte,
-                                         int8_t& rssi_dBm, uint8_t& lqi, bool& crcOk) {
-    if (rssiByte >= 128)
-        rssi_dBm = ((int16_t)rssiByte - 256) / 2 - RSSI_OFFSET_250K;
-    else
-        rssi_dBm = rssiByte / 2 - RSSI_OFFSET_250K;
-
-    lqi = lqiByte & 0x7F;
-    crcOk = (lqiByte & 0x80);
-}
 
 bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk) {
     if (!crcOk || len != CC2500_PACKET_SIZE || data[0] != CC2500_START_BYTE) {
@@ -323,9 +322,35 @@ bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk)
     return true;
 }
 
-uint8_t CC2500Receiver::_readMARCState() {
-    return _readRegister(0x35) & 0x1F;
+bool CC2500Receiver::receivePacket() {
+    uint8_t len = 0;
+    bool crcOk;
+    delayMicroseconds(20);
+    uint8_t state = _readMARCState();
+   // Serial.printf("[CC2500 DEBUG  ] MARCSTATE at receive pkt = 0x%02X\n", state);
+
+    if (_readRXFIFO(_packet, len, crcOk)) {
+        if (_verifyPacket(_packet, len, crcOk)) {
+            unsigned long currentTime = millis();  // ms timestamp
+            unsigned long gap = currentTime - _lastPacketTime;
+
+            _lastPacketTime = currentTime;
+            _hasValidPacket = true;
+
+            Serial.printf("[PACKET RECEIVED] Time=%lu ms | Gap=%lu ms\n", currentTime, gap);
+
+            return true;
+        }
+    }
+
+    Serial.println("[CC2500] Invalid packet or CRC failed.");
+    _strobeCommand(SIDLE);
+    _strobeCommand(SFRX);
+    _strobeCommand(SRX);
+    delayMicroseconds(20);
+    return false;
 }
+
 
 void CC2500Receiver::_configureRadio() {
     Serial.println("[CC2500 CONFIG] Setting registers...");

@@ -25,9 +25,13 @@ void setup() {
 
     // Initialize CC2500 receiver
     comManager.begin();
-    
+
+    delay(50);
+    /*
     // BMI323 Init
     bmi323_init();
+
+    delay(50);
 
     // BMP390 Init
     if (!bmp390_init_all()) {
@@ -50,9 +54,14 @@ void setup() {
     run_calibration_sequence_startup();
     delay(500);
 
-    // BMI323 FIFO
-    bmi323_setup_fifo();
+    Serial.println("[ERROR] BMI323 FIFO setup started ");
 
+// BMI323 FIFO
+    if (!bmi323_setup_fifo()) {
+    Serial.println("[ERROR] BMI323 FIFO setup failed");
+    return;
+}
+    
     // BMP390 Init (AFTER mode selection!)
     if (!bmp390_begin()) {
         Serial.println("[ERROR] BMP390 setup failed");
@@ -60,6 +69,8 @@ void setup() {
 
     delay(1000);
     Serial.println(F("Flight mode configuration applied."));
+
+    */
     
 }
 
@@ -67,6 +78,7 @@ void loop() {
 
      // Update RC inputs
     comManager.update();
+    /*
     static uint32_t last_ms = millis();
     uint32_t now = millis();
     float dt = (now - last_ms) * 0.001f;
@@ -89,6 +101,8 @@ void loop() {
 
     // Update flight controller with dt
     flightController.update(dt);  // only dt
+
+    */
 
     delay(4); // maintain sensor update rate
 }

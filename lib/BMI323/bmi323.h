@@ -208,7 +208,7 @@ bool bmi323_accel_calibrate_all(AccelCalibration* cal) ;
 void apply_gyro_calibration(const GyroCalibration* cal);
 void apply_accel_calibration(const AccelCalibration* cal);
 void wait_for_user_confirmation();
-void bmi323_setup_fifo(void);
+bool bmi323_setup_fifo();
 void bmi323_read_fifo(void);
 void update_orientation(float ax, float ay, float az, float gx, float gy ,float gz);
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length);
