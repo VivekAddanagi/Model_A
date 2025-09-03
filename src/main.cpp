@@ -95,6 +95,6 @@ void loop() {
     }
 
     // Update flight controller with dt
-   // flightController.update(dt);  // only dt
+    flightController.update(dt);  // only dt
     delay(4); // maintain sensor update rate
 }

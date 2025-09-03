@@ -625,6 +625,8 @@ void bmi323_read_fifo() {
     if (index != bytes_to_read) {
         Serial.printf("[BMI323 FIFO] Misalign: read=%u, used=%d (frame_bytes=%u)\n",
                       bytes_to_read, index, (unsigned)frame_bytes);
+                      
+        bmi323_flush_fifo(); // recover              
     }
     if (parsed || skipped) {
        // Serial.printf("[BMI323 FIFO] Parsed=%d, Skipped=%d\n", parsed, skipped);

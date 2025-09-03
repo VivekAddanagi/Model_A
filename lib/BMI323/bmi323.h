@@ -184,7 +184,12 @@ extern AccelCalibration accel_cal;
 
 extern volatile bool bmi323_fifo_ready;
 
+// ISR flags/counters (declared only)
 
+extern volatile uint32_t bmi323_isr_count;
+
+extern uint32_t bmi323_last_isr_count;
+extern uint32_t bmi323_last_service_ms;
 
 // ----------------------------
 // C-Compatible API Prototypes
