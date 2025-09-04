@@ -487,7 +487,7 @@ static float    bmi_time_lsb_sec = 0.0000390625f; // set from datasheet/config
 
 void bmi323_read_fifo() {
 
-  
+
     if (!bmi323_fifo_ready) return;
     bmi323_fifo_ready = false;
 
@@ -607,7 +607,8 @@ void bmi323_read_fifo() {
 
         // Use filtered values + dt in orientation update
         update_orientation_dt(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, dt);
-
+        
+       /*
         // Debug print
         Serial.print("S_T:0x");
         Serial.print(sensor_time_raw, HEX);
@@ -616,7 +617,7 @@ void bmi323_read_fifo() {
         else Serial.print("TEMP: [skip] | ");
         Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
                       ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
-        
+        */
 
         parsed++;
         index += frame_bytes;

@@ -161,27 +161,12 @@ void SensorManager::process_bmp390_fifo() {
         last_offset_update = millis();
     }
     
-  // === Debug print (every 5s) ===
-static uint32_t last_debug = 0;
-static unsigned long prev_debug_time = 0;
-static unsigned long debug_gap = 0;
-
-// Always measure the gap (even if we don't print)
-unsigned long now = millis();
-if (prev_debug_time != 0) {
-    debug_gap = now - prev_debug_time;
-}
-prev_debug_time = now;
-
-// Only print every 5 seconds
-if (millis() - last_debug > 5000) {
-    last_debug = millis();
-    Serial.printf(
-        "ms:%lu | Δt=%lu ms | TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m | Frames=%d\n",
-        now, debug_gap, t_filt, pressure_filtered, alt_ground, alt_sea, (int)pressures.size()
-    );
-}
-        
+    
+    // === Continuous debug print ===
+   // Serial.printf(
+        //"ms:%lu | TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m | Frames=%d\n",
+       // millis(), t_filt, pressure_filtered, alt_ground, alt_sea, (int)pressures.size()
+   // );
 }
 
 // -------------------- Altitude EKF --------------------
