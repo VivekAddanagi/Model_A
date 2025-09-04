@@ -84,7 +84,7 @@ void loop() {
     sensorManager.update();
 
     // Update RC inputs
-   // comManager.update();
+    comManager.update();
 
     // Map RC input to flight controller setpoints if new data received
     if (comManager.hasNewData()) {

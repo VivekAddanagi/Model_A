@@ -201,19 +201,19 @@ bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& ro
     }
     Serial.println();
 
-    yaw      = _packet[1];
-    pitch    = _packet[2];
-    roll     = _packet[3];
-    throttle = _packet[4];
-    mode     = _packet[5];
-    armed    = _packet[6];   // ✅ new: match TX
-    takeoff  = _packet[7];
-    failsafe = _packet[8];
-    photo    = _packet[9];
-    video    = _packet[10];
+   yaw      = (int8_t)_packet[1];
+pitch    = (int8_t)_packet[2];
+roll     = (int8_t)_packet[3];
+throttle = _packet[4];
+mode     = _packet[5];
+armed    = _packet[6];
+takeoff  = _packet[7];
+failsafe = _packet[8];
+photo    = _packet[9];
+video    = _packet[10];
 
-    Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
-                  yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
+Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
+              yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
 
     return true;
 }
@@ -305,18 +305,17 @@ if (gap > (24 + 12)) {   // tolerance = 1.5 × interval
 _hasValidPacket = true;
 anyPacketReceived = true;
 
-        // Extract payload
-        uint8_t yaw   = _packet[1];
-        uint8_t pitch = _packet[2];
-        uint8_t roll  = _packet[3];
-        uint8_t thr   = _packet[4];
-        uint8_t mode  = _packet[5];
-        uint8_t arm   = _packet[6];
-        uint8_t to    = _packet[7];
-        uint8_t fs    = _packet[8];
-        uint8_t ph    = _packet[9];
-        uint8_t vid   = _packet[10];
-
+        // Extract payload as int8_t properly
+int8_t yaw   = (int8_t)_packet[1];
+int8_t pitch = (int8_t)_packet[2];
+int8_t roll  = (int8_t)_packet[3];
+uint8_t thr   = _packet[4];
+uint8_t mode  = _packet[5];
+bool arm     = _packet[6];
+bool to      = _packet[7];
+bool fs      = _packet[8];
+bool ph      = _packet[9];
+bool vid     = _packet[10];
         int8_t rssi_dbm;
         uint8_t lqi;
         _processStatusBytes(_packet[11], _packet[12], rssi_dbm, lqi, crcOk);
@@ -325,7 +324,8 @@ anyPacketReceived = true;
 float lossRate = (_expectedPackets > 0) ? 
                   (100.0f * _lostPackets / _expectedPackets) : 0.0f;
 
-Serial.printf("[RX DATA] YAW=%u PITCH=%u ROLL=%u THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
+// Print using %d for signed, %u for unsigned
+Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
               "| RSSI=%ddBm LQI=%u Δt=%lu ms | Loss=%lu/%lu (%.1f%%)\n",
               yaw, pitch, roll, thr, mode, arm, to, fs, ph, vid,
               rssi_dbm, lqi, gap,
