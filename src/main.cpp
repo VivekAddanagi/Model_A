@@ -83,8 +83,10 @@ void loop() {
     // Update sensors + EKF
     sensorManager.update();
 
+   // delay (2); // maintain sensor update rate
+
     // Update RC inputs
-    comManager.update();
+   // comManager.update();
 
     // Map RC input to flight controller setpoints if new data received
     if (comManager.hasNewData()) {
@@ -96,5 +98,5 @@ void loop() {
 
     // Update flight controller with dt
     flightController.update(dt);  // only dt
-    delay(4); // maintain sensor update rate
+    delay(5); // maintain sensor update rate
 }

@@ -283,60 +283,96 @@ bool CC2500Receiver::receivePacket() {
     uint8_t len = 0;
     bool crcOk;
 
+    // Track print timing
+    static unsigned long lastPrintTime = 0;
+    static long rssiSum = 0;
+    static long lqiSum = 0;
+    static uint16_t rssiCount = 0;
+
+    // Failure counters
+    static uint32_t crcFails = 0;
+    static uint32_t lenFails = 0;
+    static uint32_t startByteFails = 0;
+
     while (true) {
         if (!_readRXFIFO(_packet, len, crcOk)) break;
-        if (!_verifyPacket(_packet, len, crcOk)) continue;
+        if (!_verifyPacket(_packet, len, crcOk)) {
+            if (!crcOk) crcFails++;
+            else if (len != CC2500_PACKET_SIZE) lenFails++;
+            else if (_packet[0] != CC2500_START_BYTE) startByteFails++;
+            continue;
+        }
 
         // Packet is valid → update counters
-       _receivedPackets++;
-_expectedPackets++;
+        _receivedPackets++;
+        _expectedPackets++;
 
-unsigned long currentTime = millis();
-unsigned long gap = (_lastPacketTime == 0) ? 0 : (currentTime - _lastPacketTime);
-_lastPacketTime = currentTime;
+        unsigned long currentTime = millis();
+        unsigned long gap = (_lastPacketTime == 0) ? 0 : (currentTime - _lastPacketTime);
+        _lastPacketTime = currentTime;
 
-// Infer missed packets from gap
-if (gap > (24 + 12)) {   // tolerance = 1.5 × interval
-    uint16_t missed = (gap / 24) - 1;
-    _lostPackets += missed;
-    _expectedPackets += missed;
-}
+        // Infer missed packets from gap
+        if (gap > (24 + 12)) {   // tolerance = 1.5 × interval
+            uint16_t missed = (gap / 24) - 1;
+            _lostPackets += missed;
+            _expectedPackets += missed;
+        }
 
-_hasValidPacket = true;
-anyPacketReceived = true;
+        _hasValidPacket = true;
+        anyPacketReceived = true;
 
-        // Extract payload as int8_t properly
-int8_t yaw   = (int8_t)_packet[1];
-int8_t pitch = (int8_t)_packet[2];
-int8_t roll  = (int8_t)_packet[3];
-uint8_t thr   = _packet[4];
-uint8_t mode  = _packet[5];
-bool arm     = _packet[6];
-bool to      = _packet[7];
-bool fs      = _packet[8];
-bool ph      = _packet[9];
-bool vid     = _packet[10];
+        // Extract payload
+        int8_t yaw   = (int8_t)_packet[1];
+        int8_t pitch = (int8_t)_packet[2];
+        int8_t roll  = (int8_t)_packet[3];
+        uint8_t thr  = _packet[4];
+        uint8_t mode = _packet[5];
+        bool arm     = _packet[6];
+        bool to      = _packet[7];
+        bool fs      = _packet[8];
+        bool ph      = _packet[9];
+        bool vid     = _packet[10];
+
         int8_t rssi_dbm;
         uint8_t lqi;
         _processStatusBytes(_packet[11], _packet[12], rssi_dbm, lqi, crcOk);
 
-        // Print summary with stats
-float lossRate = (_expectedPackets > 0) ? 
-                  (100.0f * _lostPackets / _expectedPackets) : 0.0f;
+        // Accumulate RSSI/LQI for averaging
+        rssiSum += rssi_dbm;
+        lqiSum += lqi;
+        rssiCount++;
 
-// Print using %d for signed, %u for unsigned
-Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
-              "| RSSI=%ddBm LQI=%u Δt=%lu ms | Loss=%lu/%lu (%.1f%%)\n",
-              yaw, pitch, roll, thr, mode, arm, to, fs, ph, vid,
-              rssi_dbm, lqi, gap,
-              _lostPackets, _expectedPackets, lossRate);
-        // Raw packet
-        
-       // Serial.printf("[RX] Reading from RX FIFO: ");
-        for (uint8_t i = 0; i < len; ++i) {
-            //Serial.printf("0x%02X ", _packet[i]);
+        // Print once every 500 ms
+        if (currentTime - lastPrintTime >= 500) {
+            lastPrintTime = currentTime;
+
+            float lossRate = (_expectedPackets > 0) ? 
+                              (100.0f * _lostPackets / _expectedPackets) : 0.0f;
+
+            int avgRssi = (rssiCount > 0) ? (rssiSum / rssiCount) : 0;
+            int avgLqi  = (rssiCount > 0) ? (lqiSum / rssiCount) : 0;
+
+            Serial.printf("[RX STATS] OK=%lu FAIL=%lu LOSS=%.1f%% "
+                          "RSSI(avg)=%d dBm LQI(avg)=%u "
+                          "| CRC_FAIL=%lu LEN_FAIL=%lu SB_FAIL=%lu\n",
+                          _receivedPackets, _lostPackets, lossRate,
+                          avgRssi, avgLqi,
+                          crcFails, lenFails, startByteFails);
+
+            // Reset accumulators
+            rssiSum = 0;
+            lqiSum = 0;
+            rssiCount = 0;
+
+            /*
+            // Optional detailed packet print
+            Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
+                          "| RSSI=%ddBm LQI=%u Δt=%lu ms | Loss=%lu/%lu (%.1f%%)\n",
+                          yaw, pitch, roll, thr, mode, arm, to, fs, ph, vid,
+                          rssi_dbm, lqi, gap,
+                          _lostPackets, _expectedPackets, lossRate);
+            */
         }
-        Serial.println();
     }
 
     // Flush FIFO once at end
@@ -349,7 +385,15 @@ Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=
 
 bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk) {
     if (!crcOk || len != CC2500_PACKET_SIZE || data[0] != CC2500_START_BYTE) {
-        Serial.println("[CC2500 VERIFY] Packet failed verification.");
+        // Minimal debug: failures are counted, not printed per packet
+        /*
+        Serial.printf("[VERIFY DEBUG] Len=%u, CRC_OK=%d, StartByte=0x%02X\n", len, crcOk, data[0]);
+        Serial.print("[VERIFY DATA] ");
+        for (int i = 0; i < len; i++) {
+            Serial.printf("0x%02X ", data[i]);
+        }
+        Serial.println();
+        */
         return false;
     }
     return true;

@@ -486,38 +486,37 @@ static uint16_t last_bmi_st = 0;
 static float    bmi_time_lsb_sec = 0.0000390625f; // set from datasheet/config
 
 void bmi323_read_fifo() {
+    static uint32_t last_debug_time      = 0;  // For debug throttling
+    static uint32_t last_success_read_time = 0; // Track last successful data read time
 
+    uint32_t now = millis();
+    uint32_t fifo_read_gap = now - last_success_read_time;
 
     if (!bmi323_fifo_ready) return;
     bmi323_fifo_ready = false;
 
-#if USE_INT_LATCH
-    // Clear latched INT1 if using latched mode
-    (void)bmi323_readRegister(REG_INT_STATUS_INT1);
-#endif
+    #if USE_INT_LATCH
+        (void)bmi323_readRegister(REG_INT_STATUS_INT1);
+    #endif
 
-    // get current fifo config & derive whether time/temp are present
     uint16_t fifo_conf = bmi323_readRegister(REG_FIFO_CONF);
     const bool fifo_time_en = (fifo_conf & (1 << 8)) != 0;
     const bool fifo_acc_en  = (fifo_conf & (1 << 9)) != 0;
     const bool fifo_gyr_en  = (fifo_conf & (1 << 10)) != 0;
     const bool fifo_temp_en = (fifo_conf & (1 << 11)) != 0;
 
-    // compute expected frame size from FIFO_CONF (safe fallback to your FRAME_BYTES)
     uint16_t frame_bytes = bmi323_frame_size_bytes_from_conf();
-    if (frame_bytes == 0) frame_bytes = FRAME_BYTES; // fallback (likely 14)
+    if (frame_bytes == 0) frame_bytes = FRAME_BYTES;
 
-    // Read FIFO length (words)
     uint16_t fifo_fill_words = bmi323_readRegister(REG_FIFO_LENGTH) & 0x07FF;
     if (fifo_fill_words == 0) return;
 
     int bytes_to_read = fifo_fill_words * 2;
     if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
 
-    // SPI burst read: many drivers expect a dummy byte first
     uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
     bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read + 1);
-    memcpy(fifo_buffer, raw + 1, bytes_to_read);  // skip dummy
+    memcpy(fifo_buffer, raw + 1, bytes_to_read);
 
     int index = 0;
     int parsed = 0, skipped = 0;
@@ -546,7 +545,6 @@ void bmi323_read_fifo() {
             sensor_time_raw = (uint16_t)((fifo_buffer[cur + 1] << 8) | fifo_buffer[cur + 0]); cur += 2;
         }
 
-        // Sanity check
         bool sane = true;
         if (fifo_acc_en) {
             if (abs(ax_raw) > 32767 || abs(ay_raw) > 32767 || abs(az_raw) > 32767) sane = false;
@@ -561,7 +559,6 @@ void bmi323_read_fifo() {
             continue;
         }
 
-        // Convert to physical units + calibration
         float ax_g = (fifo_acc_en ? (float)ax_raw / 4096.0f : 0.0f) - accel_cal.bias_x;
         float ay_g = (fifo_acc_en ? (float)ay_raw / 4096.0f : 0.0f) - accel_cal.bias_y;
         float az_g = (fifo_acc_en ? (float)az_raw / 4096.0f : 0.0f) - accel_cal.bias_z;
@@ -570,7 +567,6 @@ void bmi323_read_fifo() {
         float gy_dps = (fifo_gyr_en ? (float)gy_raw / 16.384f : 0.0f) - gyro_cal.bias_y;
         float gz_dps = (fifo_gyr_en ? (float)gz_raw / 16.384f : 0.0f) - gyro_cal.bias_z;
 
-        // 🔽 Apply low-pass filters here 🔽
         gx_dps = lpf_gx.step(gx_dps);
         gy_dps = lpf_gy.step(gy_dps);
         gz_dps = lpf_gz.step(gz_dps);
@@ -579,58 +575,55 @@ void bmi323_read_fifo() {
         ay_g   = lpf_ay.step(ay_g);
         az_g   = lpf_az.step(az_g);
 
-        // Save filtered values
         latest_ax = ax_g; latest_ay = ay_g; latest_az = az_g;
         latest_gx = gx_dps; latest_gy = gy_dps; latest_gz = gz_dps;
 
-        // Temp handling
         float temp_c = NAN;
         if (fifo_temp_en && temp_raw != (int16_t)0x8000) {
             temp_c = (float)temp_raw / 512.0f + 23.0f;
             temp_c = constrain(temp_c, -40.0f, 85.0f);
         }
 
-        // --- dt calculation ---
         float dt = 0.0f;
         if (fifo_time_en) {
             if (have_bmi_time) {
-                uint16_t d = (uint16_t)(sensor_time_raw - last_bmi_st); // handles wrap
+                uint16_t d = (uint16_t)(sensor_time_raw - last_bmi_st);
                 dt = d * bmi_time_lsb_sec;
             }
             last_bmi_st = sensor_time_raw;
             have_bmi_time = true;
         }
-        if (dt <= 0.0f || dt > 0.02f) { // constrain to reasonable IMU ODR
-            dt = (millis() - last_update_time) * 0.001f; // fallback
+        if (dt <= 0.0f || dt > 0.02f) {
+            dt = (millis() - last_update_time) * 0.001f;
         }
         last_update_time = millis();
 
-        // Use filtered values + dt in orientation update
         update_orientation_dt(ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, dt);
-        
-       /*
-        // Debug print
-        Serial.print("S_T:0x");
-        Serial.print(sensor_time_raw, HEX);
-        Serial.printf(" | ms:%lu | ", millis());
-        if (!isnan(temp_c)) Serial.printf("TEMP: %.2f°C | ", temp_c);
-        else Serial.print("TEMP: [skip] | ");
-        Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
-                      ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
-        */
 
         parsed++;
         index += frame_bytes;
     }
 
+    if (parsed) {
+        last_success_read_time = now;
+
+        if (now - last_debug_time >= 200) {
+            last_debug_time = now;
+
+            Serial.printf("[FIFO Read Gap]: %lu ms | Parsed Frames: %d | Skipped Frames: %d | ",
+                          fifo_read_gap, parsed, skipped);
+
+            Serial.printf("ms:%lu | ", now);
+            Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
+                          latest_ax, latest_ay, latest_az,
+                          latest_gx, latest_gy, latest_gz);
+        }
+    }
+
     if (index != bytes_to_read) {
         Serial.printf("[BMI323 FIFO] Misalign: read=%u, used=%d (frame_bytes=%u)\n",
                       bytes_to_read, index, (unsigned)frame_bytes);
-                      
-        bmi323_flush_fifo(); // recover              
-    }
-    if (parsed || skipped) {
-       // Serial.printf("[BMI323 FIFO] Parsed=%d, Skipped=%d\n", parsed, skipped);
+        bmi323_flush_fifo();
     }
 }
 
