@@ -89,10 +89,11 @@ void loop() {
     // Update sensors + EKF
     sensorManager.update();
 
-    delay (2); // maintain sensor update rate
-
+    delayMicroseconds(500); // small delay to allow FIFO to fill
     // Update RC inputs
     comManager.update();
+
+    delayMicroseconds(500); // small delay to allow FIFO to fill
 
     // Map RC input to flight controller setpoints if new data received
     if (comManager.hasNewData()) {

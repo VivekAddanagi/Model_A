@@ -60,7 +60,8 @@ bool SensorManager::begin(float sea_level_pressure) {
 void SensorManager::update() {
 
     bmi323_read_fifo();
-  //  process_bmp390_fifo();
+    delayMicroseconds(500); // small delay to allow FIFO to fill
+    process_bmp390_fifo();
 
     // EKF and sensor fusion
     float ax = latest_ax;
