@@ -82,11 +82,11 @@ void SensorManager::update() {
 
 
 
-
 // -------------------- BMP390 FIFO processing (stabilized) --------------------
 void SensorManager::process_bmp390_fifo() {
     static unsigned long last_read_ms = 0;
-    const unsigned long READ_INTERVAL_MS = 0; // 100 Hz
+    static unsigned long last_successful_read_ms = 0;
+    const unsigned long READ_INTERVAL_MS = 10; // 100 Hz sensor processing
 
     // === Two-stage low-pass filter states ===
     static float p_fast  = pressure_offset; // fast LPF state
@@ -99,7 +99,9 @@ void SensorManager::process_bmp390_fifo() {
     const float TEMP_COEFF = 0.12f;  // Pa/°C temperature compensation
 
     if (!fifo_data_ready && (millis() - last_read_ms < READ_INTERVAL_MS)) return;
-    last_read_ms = millis();
+
+    unsigned long now = millis();
+    last_read_ms = now; // tracks "attempts"
     fifo_data_ready = false;
 
     if (bmp390_check_fifo_overflow() > 0)
@@ -161,14 +163,24 @@ void SensorManager::process_bmp390_fifo() {
         pressure_offset = pressure_filtered;
         last_offset_update = millis();
     }
-    
-    
-    // === Continuous debug print ===
-    Serial.printf(
-        "ms:%lu | TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m | Frames=%d\n",
-        millis(), t_filt, pressure_filtered, alt_ground, alt_sea, (int)pressures.size()
-    );
+
+    // === Measure gap between successful reads ===
+    unsigned long read_gap = now - last_successful_read_ms;
+    last_successful_read_ms = now;
+
+    // === Throttled debug print ===
+    static unsigned long last_print_ms = 0;
+    const unsigned long PRINT_INTERVAL_MS = 500; // print every 0.5 s
+
+    if (millis() - last_print_ms >= PRINT_INTERVAL_MS) {
+        last_print_ms = millis();
+        Serial.printf(
+            "[BMP390] Gap:%lu ms | TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m | Frames=%d\n",
+            read_gap, t_filt, pressure_filtered, alt_ground, alt_sea, (int)pressures.size()
+        );
+    }
 }
+
 
 // -------------------- Altitude EKF --------------------
 static float h = 0.0f;   // altitude
