@@ -21,26 +21,53 @@ AccelCalibration accel_cal;
 // --- Internal SPI Configuration ---
 static SPISettings bmi323_spi_settings(6500000, MSBFIRST, SPI_MODE0);
 
+// Ensure small idle after BMI SPI transactions per BMI323 requirement (>=2 µs).
+#ifndef MIN_IDLE_US_AFTER_BMI
+#define MIN_IDLE_US_AFTER_BMI 2
+#endif
+
 // --- Internal Helper Functions ---
- void bmi323_writeRegister(uint8_t reg, uint16_t value) {
+void bmi323_writeRegister(uint8_t reg, uint16_t value) {
+    // Ensure the other device's CS (CC2500) is de-asserted before taking BMI CS low.
+#ifdef CC2500_CS_PIN
+    digitalWrite(CC2500_CS_PIN, HIGH);
+#endif
+
     SPI.beginTransaction(bmi323_spi_settings);
     digitalWrite(BMI323_CS_PIN, LOW);
-    SPI.transfer(reg & 0x7F);              // Write
+
+    SPI.transfer(reg & 0x7F);              // Write header (MSB = 0)
     SPI.transfer(value & 0xFF);            // LSB
     SPI.transfer((value >> 8) & 0xFF);     // MSB
+
     digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
+
+    // Must leave >=2 µs idle after BMI SPI access in normal/high-perf mode.
+    delayMicroseconds(MIN_IDLE_US_AFTER_BMI);
 }
 
- uint16_t bmi323_readRegister(uint8_t reg) {
+
+uint16_t bmi323_readRegister(uint8_t reg) {
+    // Ensure CC2500 CS is de-asserted before asserting BMI CS.
+#ifdef CC2500_CS_PIN
+    digitalWrite(CC2500_CS_PIN, HIGH);
+#endif
+
     SPI.beginTransaction(bmi323_spi_settings);
     digitalWrite(BMI323_CS_PIN, LOW);
-    SPI.transfer(reg | 0x80);              // Read
-    SPI.transfer(0x00);                    // Dummy
+
+    SPI.transfer(reg | 0x80);              // Read header (MSB=1)
+    SPI.transfer(0x00);                    // Dummy byte (discard per BMI323 SPI protocol)
     uint8_t lsb = SPI.transfer(0x00);
     uint8_t msb = SPI.transfer(0x00);
+
     digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
+
+    // Required idle after BMI access
+    delayMicroseconds(MIN_IDLE_US_AFTER_BMI);
+
     return (msb << 8) | lsb;
 }
 
@@ -80,12 +107,14 @@ static bool bmi323_readExtendedRegister(uint8_t extReg, uint16_t* out_value) {
 
 // --- BMI323 Core Functions ---
 bool bmi323_init(void) {
+    // Initialize SPI and BMI CS pin (safe to call even if CC2500 also calls SPI.begin)
     SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, BMI323_CS_PIN);
     pinMode(BMI323_CS_PIN, OUTPUT);
     digitalWrite(BMI323_CS_PIN, HIGH);
     delay(10);
 
-    bmi323_readRegister(CHIP_ID_REG);  // Dummy read to activate SPI
+    // Single dummy read after power-up to switch BMI323 from I2C->SPI (required)
+    bmi323_readRegister(CHIP_ID_REG);  // Dummy read to activate SPI on BMI323
     delay(5);
 
     uint16_t chip_id = bmi323_readRegister(CHIP_ID_REG);
@@ -98,6 +127,12 @@ bool bmi323_init(void) {
     // --- Reset Sensor ---
     bmi323_writeRegister(CMD_REG, RESET_CMD);
     delay(200);
+
+    // After soft-reset the device may revert to I2C mode; perform the required dummy SPI read
+    // with CS low to switch back to SPI operation (per BMI323 rules).
+    bmi323_readRegister(CHIP_ID_REG);
+    delay(5);
+
     bmi323_set_axis_remap(0x00);
     delay(200);
 
@@ -123,7 +158,6 @@ bool bmi323_init(void) {
         return false;
     }
 
-    
     uint16_t err = bmi323_readRegister(ERR_REG);
     if (err & 0x01) {
         Serial.println("[BMI323] Fatal error in ERR_REG.");
@@ -132,17 +166,27 @@ bool bmi323_init(void) {
 
     for (int i = 0; i < 20; ++i) {
         if (bmi323_readRegister(STATUS_REG) & (1 << 7)) {
-            
             break;
         }
         delay(10);
     }
 
-      bmi323_writeRegister(ACC_CONF_REG, 0x70A9);  // ±8g, 200Hz, high perf
-      bmi323_writeRegister(GYR_CONF_REG, 0x70C9);  // ±2000 dps, 200Hz, high perf
-      Serial.println("[BMI323] Sensor configured successfully.");
+    bmi323_writeRegister(ACC_CONF_REG, 0x70A9);  // ±8g, 200Hz, high perf
+    bmi323_writeRegister(GYR_CONF_REG, 0x70C9);  // ±2000 dps, 200Hz, high perf
+    Serial.println("[BMI323] Sensor configured successfully.");
 
-        return true;
+    
+
+    bmi323_data_t d;
+if (bmi323_read(&d)) {
+    Serial.printf("BMI AX=%d AY=%d AZ=%d GX=%d GY=%d GZ=%d TEMP=%d\n",
+                   d.ax, d.ay, d.az, d.gx, d.gy, d.gz, d.temp);
+} else {
+    Serial.println("BMI read failed");
+}
+
+return true;
+ 
 }
 
 bool bmi323_read(bmi323_data_t* data) {
@@ -152,6 +196,11 @@ bool bmi323_read(bmi323_data_t* data) {
     }
 
     uint8_t buffer[13];
+
+    // Ensure other device's CS is de-asserted before asserting BMI CS
+#ifdef CC2500_CS_PIN
+    digitalWrite(CC2500_CS_PIN, HIGH);
+#endif
     SPI.beginTransaction(bmi323_spi_settings);
     digitalWrite(BMI323_CS_PIN, LOW);
     SPI.transfer(ACC_X_REG | 0x80);
@@ -159,6 +208,9 @@ bool bmi323_read(bmi323_data_t* data) {
     for (int i = 1; i < 13; ++i) buffer[i] = SPI.transfer(0x00);
     digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
+
+    // Required idle after BMI access
+    delayMicroseconds(MIN_IDLE_US_AFTER_BMI);
 
     data->ax = (buffer[2] << 8) | buffer[1];
     data->ay = (buffer[4] << 8) | buffer[3];
@@ -241,13 +293,26 @@ bool bmi323_set_axis_remap(uint8_t config) {
 }
 
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length) {
+    // Ensure CC2500 CS is de-asserted (never hold both CS low)
+#ifdef CC2500_CS_PIN
+    digitalWrite(CC2500_CS_PIN, HIGH);
+#endif
+    SPI.beginTransaction(bmi323_spi_settings);
     digitalWrite(BMI323_CS_PIN, LOW);
-    SPI.transfer(reg | 0x80); // Set read bit
-    for (uint16_t i = 0; i < length; i++) {
-        buffer[i] = SPI.transfer(0x00);
+    SPI.transfer(reg | 0x80); // read header (MSB=1)
+    // BMI returns a dummy byte immediately after header — read & discard first byte
+    if (length > 0) {
+        buffer[0] = SPI.transfer(0x00); // dummy for caller consistency (caller may expect dummy)
+        for (uint16_t i = 1; i < length; i++) {
+            buffer[i] = SPI.transfer(0x00);
+        }
     }
     digitalWrite(BMI323_CS_PIN, HIGH);
+    SPI.endTransaction();
+    // required idle
+    delayMicroseconds(MIN_IDLE_US_AFTER_BMI);
 }
+
 
 bool bmi323_read_accel(float* ax, float* ay, float* az) {
     bmi323_data_t data;

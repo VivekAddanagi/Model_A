@@ -7,6 +7,7 @@
 class ComManager {
 public:
     ComManager();
+    bool selfTest();
 
     bool begin();              // Initialize comms
     void update();             // Call frequently to check for new packets

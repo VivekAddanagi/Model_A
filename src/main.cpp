@@ -25,6 +25,12 @@ void setup() {
 
     // Initialize CC2500 receiver
     comManager.begin();
+    delay(20);
+
+// Self-test the CC2500
+if (!comManager.selfTest()) {
+    Serial.println("[ERROR] CC2500 self-test failed!");
+}
 
     delay(50);
     
@@ -83,10 +89,10 @@ void loop() {
     // Update sensors + EKF
     sensorManager.update();
 
-   // delay (2); // maintain sensor update rate
+    delay (2); // maintain sensor update rate
 
     // Update RC inputs
-   // comManager.update();
+    comManager.update();
 
     // Map RC input to flight controller setpoints if new data received
     if (comManager.hasNewData()) {

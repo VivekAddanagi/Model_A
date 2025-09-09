@@ -44,6 +44,10 @@ bool CC2500Receiver::_waitForChipReady() {
 
 
 void CC2500Receiver::_writeRegister(uint8_t addr, uint8_t value) {
+    // Ensure BMI CS is de-asserted before asserting CC2500 CS
+#ifdef BMI323_CS_PIN
+    digitalWrite(BMI323_CS_PIN, HIGH);
+#endif
     SPI.beginTransaction(SPISettings(CC2500_SPI_SPEED, MSBFIRST, CC2500_SPI_MODE));
     digitalWrite(_cs, LOW);
 
@@ -53,14 +57,20 @@ void CC2500Receiver::_writeRegister(uint8_t addr, uint8_t value) {
         return;
     }
 
-    SPI.transfer(addr & 0x3F);
+    uint8_t status = SPI.transfer(addr & 0x3F); // capture status byte (returned during header)
+    (void)status; // currently unused but read per CC2500 SPI rules
     SPI.transfer(value);
 
     digitalWrite(_cs, HIGH);
     SPI.endTransaction();
 }
 
+
 uint8_t CC2500Receiver::_readRegister(uint8_t addr) {
+    // Ensure BMI CS is de-asserted before asserting CC CS
+#ifdef BMI323_CS_PIN
+    digitalWrite(BMI323_CS_PIN, HIGH);
+#endif
     SPI.beginTransaction(SPISettings(CC2500_SPI_SPEED, MSBFIRST, CC2500_SPI_MODE));
     digitalWrite(_cs, LOW);
 
@@ -71,7 +81,8 @@ uint8_t CC2500Receiver::_readRegister(uint8_t addr) {
     }
 
     uint8_t header = (addr >= 0x30) ? (addr | 0xC0) : (addr | 0x80);
-    SPI.transfer(header);
+    uint8_t status = SPI.transfer(header); // status byte returned simultaneously
+    (void)status; // keep for later debugging/interpretation if needed
     uint8_t value = SPI.transfer(0x00);
 
     digitalWrite(_cs, HIGH);
@@ -80,6 +91,10 @@ uint8_t CC2500Receiver::_readRegister(uint8_t addr) {
 }
 
 void CC2500Receiver::_strobeCommand(uint8_t cmd) {
+    // Ensure BMI CS is de-asserted before asserting CC CS
+#ifdef BMI323_CS_PIN
+    digitalWrite(BMI323_CS_PIN, HIGH);
+#endif
     SPI.beginTransaction(SPISettings(CC2500_SPI_SPEED, MSBFIRST, CC2500_SPI_MODE));
     digitalWrite(_cs, LOW);
 
@@ -89,15 +104,20 @@ void CC2500Receiver::_strobeCommand(uint8_t cmd) {
         return;
     }
 
-    SPI.transfer(cmd);
+    uint8_t status = SPI.transfer(cmd); // capture status byte
+    (void)status;
 
     digitalWrite(_cs, HIGH);
     SPI.endTransaction();
 }
 
+
 void CC2500Receiver::_loadPATable() {
     const uint8_t paTable[1] = { 0xFF };
 
+#ifdef BMI323_CS_PIN
+    digitalWrite(BMI323_CS_PIN, HIGH);
+#endif
     SPI.beginTransaction(SPISettings(CC2500_SPI_SPEED, MSBFIRST, CC2500_SPI_MODE));
     digitalWrite(_cs, LOW);
 
@@ -107,7 +127,8 @@ void CC2500Receiver::_loadPATable() {
         return;
     }
 
-    SPI.transfer(0x7E | 0x40);
+    uint8_t status = SPI.transfer(0x7E | 0x40);
+    (void)status;
     SPI.transfer(paTable[0]);
 
     digitalWrite(_cs, HIGH);
@@ -136,6 +157,9 @@ void CC2500Receiver::_reset() {
     delay(5);  // Extended delay for full reset
     
     // 4. Software reset command with proper MISO handling
+#ifdef BMI323_CS_PIN
+    digitalWrite(BMI323_CS_PIN, HIGH);
+#endif
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, CC2500_SPI_MODE)); // Slow speed for reset
     digitalWrite(_cs, LOW);
     
@@ -148,7 +172,8 @@ void CC2500Receiver::_reset() {
         }
     }
     
-    SPI.transfer(0x30); // SRES
+    uint8_t status = SPI.transfer(0x30); // SRES (capture status)
+    (void)status;
     delayMicroseconds(100);
     digitalWrite(_cs, HIGH);
     SPI.endTransaction();
@@ -164,6 +189,7 @@ void CC2500Receiver::_reset() {
         Serial.println("[CC2500 RESET] Successful");
     }
 }
+
 
 void CC2500Receiver::begin() {
     Serial.println("[CC2500] Initializing SPI and GPIO...");
@@ -195,25 +221,29 @@ bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& ro
                                           uint8_t& photo, uint8_t& video) {
     if (!_hasValidPacket) return false;
 
+    /*
     Serial.print("[RX PACKET] ");
     for (int i = 0; i < CC2500_DATA_BYTES; i++) {
         Serial.printf("0x%02X ", _packet[i]);
     }
     Serial.println();
+    */
 
-   yaw      = (int8_t)_packet[1];
-pitch    = (int8_t)_packet[2];
-roll     = (int8_t)_packet[3];
-throttle = _packet[4];
-mode     = _packet[5];
-armed    = _packet[6];
-takeoff  = _packet[7];
-failsafe = _packet[8];
-photo    = _packet[9];
-video    = _packet[10];
+    yaw      = (int8_t)_packet[1];
+    pitch    = (int8_t)_packet[2];
+    roll     = (int8_t)_packet[3];
+    throttle = _packet[4];
+    mode     = _packet[5];
+    armed    = _packet[6];
+    takeoff  = _packet[7];
+    failsafe = _packet[8];
+    photo    = _packet[9];
+    video    = _packet[10];
 
-Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
-              yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
+    /*
+    Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
+                  yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
+    */
 
     return true;
 }
@@ -243,7 +273,9 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     // Wait for full packet
     unsigned long t0 = millis();
     uint8_t rxBytes = 0;
-    while (millis() - t0 < 500) {
+
+    // ⏱️ Use configurable timeout
+    while (millis() - t0 < CC2500_RX_TIMEOUT) {
         rxBytes = _readRegister(0x3B) & 0x7F;
         if (rxBytes >= CC2500_PACKET_SIZE) break;
         delay(1);
@@ -275,113 +307,119 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     _processStatusBytes(rssi, lqi_crc, rssi_dbm, lqi, crcOk_out);
 
     len = CC2500_PACKET_SIZE;
-    return true;   // 🔹 no flush here
+    return true;   // 🔹 no flush here (handled by caller)
 }
+
 
 bool CC2500Receiver::receivePacket() {
     bool anyPacketReceived = false;
     uint8_t len = 0;
     bool crcOk;
 
-    // Track print timing
+    // Track print timing (static persists across calls)
     static unsigned long lastPrintTime = 0;
     static long rssiSum = 0;
     static long lqiSum = 0;
     static uint16_t rssiCount = 0;
 
-    // Failure counters
+    // Failure counters (persistent)
     static uint32_t crcFails = 0;
     static uint32_t lenFails = 0;
     static uint32_t startByteFails = 0;
 
-    while (true) {
-        if (!_readRXFIFO(_packet, len, crcOk)) break;
-        if (!_verifyPacket(_packet, len, crcOk)) {
-            if (!crcOk) crcFails++;
-            else if (len != CC2500_PACKET_SIZE) lenFails++;
-            else if (_packet[0] != CC2500_START_BYTE) startByteFails++;
-            continue;
-        }
-
-        // Packet is valid → update counters
-        _receivedPackets++;
-        _expectedPackets++;
-
-        unsigned long currentTime = millis();
-        unsigned long gap = (_lastPacketTime == 0) ? 0 : (currentTime - _lastPacketTime);
-        _lastPacketTime = currentTime;
-
-        // Infer missed packets from gap
-        if (gap > (24 + 12)) {   // tolerance = 1.5 × interval
-            uint16_t missed = (gap / 24) - 1;
-            _lostPackets += missed;
-            _expectedPackets += missed;
-        }
-
-        _hasValidPacket = true;
-        anyPacketReceived = true;
-
-        // Extract payload
-        int8_t yaw   = (int8_t)_packet[1];
-        int8_t pitch = (int8_t)_packet[2];
-        int8_t roll  = (int8_t)_packet[3];
-        uint8_t thr  = _packet[4];
-        uint8_t mode = _packet[5];
-        bool arm     = _packet[6];
-        bool to      = _packet[7];
-        bool fs      = _packet[8];
-        bool ph      = _packet[9];
-        bool vid     = _packet[10];
-
-        int8_t rssi_dbm;
-        uint8_t lqi;
-        _processStatusBytes(_packet[11], _packet[12], rssi_dbm, lqi, crcOk);
-
-        // Accumulate RSSI/LQI for averaging
-        rssiSum += rssi_dbm;
-        lqiSum += lqi;
-        rssiCount++;
-
-        // Print once every 500 ms
-        if (currentTime - lastPrintTime >= 500) {
-            lastPrintTime = currentTime;
-
-            float lossRate = (_expectedPackets > 0) ? 
-                              (100.0f * _lostPackets / _expectedPackets) : 0.0f;
-
-            int avgRssi = (rssiCount > 0) ? (rssiSum / rssiCount) : 0;
-            int avgLqi  = (rssiCount > 0) ? (lqiSum / rssiCount) : 0;
-
-            Serial.printf("[RX STATS] OK=%lu FAIL=%lu LOSS=%.1f%% "
-                          "RSSI(avg)=%d dBm LQI(avg)=%u "
-                          "| CRC_FAIL=%lu LEN_FAIL=%lu SB_FAIL=%lu\n",
-                          _receivedPackets, _lostPackets, lossRate,
-                          avgRssi, avgLqi,
-                          crcFails, lenFails, startByteFails);
-
-            // Reset accumulators
-            rssiSum = 0;
-            lqiSum = 0;
-            rssiCount = 0;
-
-            /*
-            // Optional detailed packet print
-            Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
-                          "| RSSI=%ddBm LQI=%u Δt=%lu ms | Loss=%lu/%lu (%.1f%%)\n",
-                          yaw, pitch, roll, thr, mode, arm, to, fs, ph, vid,
-                          rssi_dbm, lqi, gap,
-                          _lostPackets, _expectedPackets, lossRate);
-            */
-        }
+    // Try to read exactly one packet
+    if (!_readRXFIFO(_packet, len, crcOk)) {
+        return false;  // no packet available
     }
 
-    // Flush FIFO once at end
+    // Validate the packet
+    if (!_verifyPacket(_packet, len, crcOk)) {
+        if (!crcOk) crcFails++;
+        else if (len != CC2500_PACKET_SIZE) lenFails++;
+        else if (_packet[0] != CC2500_START_BYTE) startByteFails++;
+        return false; // invalid packet, skip
+    }
+
+    // ✅ Valid packet
+    _receivedPackets++;
+    _expectedPackets++;
+
+    unsigned long currentTime = millis();
+    unsigned long gap = (_lastPacketTime == 0) ? 0 : (currentTime - _lastPacketTime);
+    _lastPacketTime = currentTime;
+
+    // Detect missed packets (gap > 1.5 × interval)
+    if (gap > (24 + 12)) {
+        uint16_t missed = (gap / 24) - 1;
+        _lostPackets += missed;
+        _expectedPackets += missed;
+    }
+
+    _hasValidPacket = true;
+    anyPacketReceived = true;
+
+    // Extract payload
+    int8_t yaw   = (int8_t)_packet[1];
+    int8_t pitch = (int8_t)_packet[2];
+    int8_t roll  = (int8_t)_packet[3];
+    uint8_t thr  = _packet[4];
+    uint8_t mode = _packet[5];
+    bool arm     = _packet[6];
+    bool to      = _packet[7];
+    bool fs      = _packet[8];
+    bool ph      = _packet[9];
+    bool vid     = _packet[10];
+
+    // Status bytes
+    int8_t rssi_dbm;
+    uint8_t lqi;
+    _processStatusBytes(_packet[11], _packet[12], rssi_dbm, lqi, crcOk);
+
+    // Accumulate RSSI/LQI for averaging
+    rssiSum += rssi_dbm;
+    lqiSum += lqi;
+    rssiCount++;
+
+    // Print once every 500 ms
+    if (currentTime - lastPrintTime >= 500) {
+        lastPrintTime = currentTime;
+
+        float lossRate = (_expectedPackets > 0) ? 
+                          (100.0f * _lostPackets / _expectedPackets) : 0.0f;
+
+        int avgRssi = (rssiCount > 0) ? (rssiSum / rssiCount) : 0;
+        int avgLqi  = (rssiCount > 0) ? (lqiSum / rssiCount) : 0;
+
+        Serial.printf("[RX STATS] OK=%lu FAIL=%lu LOSS=%.1f%% "
+                      "RSSI(avg)=%d dBm LQI(avg)=%u Δt=%lu ms "
+                      "| CRC_FAIL=%lu LEN_FAIL=%lu SB_FAIL=%lu\n",
+                      _receivedPackets, _lostPackets, lossRate,
+                      avgRssi, avgLqi, gap,
+                      crcFails, lenFails, startByteFails);
+
+        // Reset accumulators
+        rssiSum = 0;
+        lqiSum = 0;
+        rssiCount = 0;
+
+        /*
+        // Optional detailed packet print
+        Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
+                      "| RSSI=%ddBm LQI=%u Δt=%lu ms | Loss=%lu/%lu (%.1f%%)\n",
+                      yaw, pitch, roll, thr, mode, arm, to, fs, ph, vid,
+                      rssi_dbm, lqi, gap,
+                      _lostPackets, _expectedPackets, lossRate);
+        */
+    }
+
+    // Flush FIFO once per call to avoid stale data
     _strobeCommand(SIDLE);
     _strobeCommand(SFRX);
     _strobeCommand(SRX);
 
     return anyPacketReceived;
 }
+
 
 bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk) {
     if (!crcOk || len != CC2500_PACKET_SIZE || data[0] != CC2500_START_BYTE) {

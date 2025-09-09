@@ -9,6 +9,10 @@
 // =============================== Pin Definitions ===============================
 // Use Config.h values if provided, else fallback to defaults
 
+// RX FIFO wait timeout in ms (keep small for drone use!)
+#define CC2500_RX_TIMEOUT 5
+
+
 #ifndef CC2500_CS_PIN
 #define CC2500_CS_PIN 10
 #endif
@@ -59,6 +63,7 @@ public:
     // Setup & operation
     void begin();
     bool receivePacket();
+    uint8_t _readRegister(uint8_t addr);
 
     // Data access
     bool getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
@@ -97,7 +102,7 @@ private:
     void _reset();
     bool _waitForChipReady();
     void _writeRegister(uint8_t addr, uint8_t value);
-    uint8_t _readRegister(uint8_t addr);
+    
     void _strobeCommand(uint8_t cmd);
     void _configureRadio();
     void _loadPATable();
