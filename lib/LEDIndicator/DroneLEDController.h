@@ -2,6 +2,8 @@
 #define DRONE_LED_CONTROLLER_H
 
 #include <Arduino.h>
+#include "bmi323.h"   // ✅ Use the FlightMode enum already defined here
+#include "bmp390.h"   // ✅ Use bmp390_profile_t if needed
 
 // Drone States
 enum DroneState {
@@ -9,15 +11,11 @@ enum DroneState {
   STATE_ARMED,
   STATE_TAKEOFF,
   STATE_IN_FLIGHT,
-  STATE_FAILSAFE
+  STATE_FAILSAFE,
+  STATE_DISARMED   // <-- add this
 };
 
-// Flight Modes
-enum FlightMode {
-  MODE_STABLE,
-  MODE_HOVER,
-  MODE_CRUISE
-};
+
 
 class DroneLEDController {
 public:

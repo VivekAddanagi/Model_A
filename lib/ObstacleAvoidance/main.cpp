@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "IRSensor.h"
 
 // GPIO setup
 #define EMITTER_FRONT  40

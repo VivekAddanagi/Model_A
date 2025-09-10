@@ -65,9 +65,20 @@ void DroneLEDController::applyStateBehavior() {
       break;
 
     case STATE_ARMED:
-      setLED(frontLEDPin, true);
-      setLED(rearLEDPin, true);
-      break;
+    setLED(frontLEDPin, true);
+    setLED(rearLEDPin, true);
+    break;
+
+case STATE_DISARMED:
+    blinkInterval = 500; // slow blink
+    if (millis() - lastUpdate >= blinkInterval) {
+        ledState = !ledState;
+        setLED(frontLEDPin, ledState);
+        setLED(rearLEDPin, LOW);
+        lastUpdate = millis();
+    }
+    break;
+
 
     case STATE_TAKEOFF:
       blinkInterval = 200;

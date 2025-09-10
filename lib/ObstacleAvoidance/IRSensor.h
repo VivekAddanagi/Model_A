@@ -2,8 +2,8 @@
 #define IR_SENSOR_H
 
 #include <Arduino.h>
-#include "Config.h"
-#include "types.h"
+
+
 
 class IRSensor {
 public:

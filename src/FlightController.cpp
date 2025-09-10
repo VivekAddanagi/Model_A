@@ -1,6 +1,15 @@
 #include "FlightController.h"
 #include <driver/mcpwm.h>
 #include "soc/mcpwm_periph.h"
+#include "DroneLEDController.h"
+
+// FlightController.cpp
+extern DroneState currentState;
+extern FlightMode currentMode;
+extern bool recording;
+extern bool photoFlash;
+extern DroneLEDController ledController;
+
 
 // extern ComManager comManager;
 // -------------------- PID update --------------------
@@ -89,7 +98,6 @@ void FlightController::begin() {
     Serial.println("[FC] Motors initialized on MCPWM @ 20kHz.");
 }
 
-// -------------------- Flight loop update --------------------
 void FlightController::update(float dt) {
     // --- Sensor readings ---
     float roll  = estimated_roll;
@@ -103,54 +111,51 @@ void FlightController::update(float dt) {
     float yaw_cmd   = PID_Update(pid_yaw,   yaw_set,   yaw,   dt);
     float alt_cmd   = PID_Update(pid_alt,   alt_set,   alt,   dt);
 
-    // ==============================
     // Motor mixing function
     auto mixMotors = [&](float base) {
-        float M1 = base + pitch_cmd + roll_cmd - yaw_cmd; // Front Left CCW
-        float M2 = base + pitch_cmd - roll_cmd + yaw_cmd; // Front Right CW
-        float M3 = base - pitch_cmd - roll_cmd - yaw_cmd; // Rear Right CCW
-        float M4 = base - pitch_cmd + roll_cmd + yaw_cmd; // Rear Left CW
+        float M1 = base + pitch_cmd + roll_cmd - yaw_cmd;
+        float M2 = base + pitch_cmd - roll_cmd + yaw_cmd;
+        float M3 = base - pitch_cmd - roll_cmd - yaw_cmd;
+        float M4 = base - pitch_cmd + roll_cmd + yaw_cmd;
         writeMotors(M1, M2, M3, M4);
     };
 
-    // ==============================
-    // Safety Logic (ARM, FAILSAFE, TAKEOFF)
-    // ==============================
     static float throttleOverride = 1000; // used for ramp control
     static uint32_t landedTimer   = 0;    // track time on ground
 
     // FAILSAFE DESCENT
     if (com->failsafe) {
+        currentState = STATE_FAILSAFE;   // <-- update global state
+        ledController.update(currentState, currentMode, recording, photoFlash); // optional immediate update
         if (alt > 0.2f) {   // above 20 cm
-            throttleOverride -= 0.5f;  // gentle descent
-            if (throttleOverride < 1100) throttleOverride = 1100; // small lift
-            landedTimer = millis(); // reset timer while airborne
+            throttleOverride -= 0.5f;
+            if (throttleOverride < 1100) throttleOverride = 1100;
+            landedTimer = millis();
         } else {
-            if (millis() - landedTimer > 2000) { // 2 sec stable on ground
+            if (millis() - landedTimer > 2000) {
                 throttleOverride = 1000;
-                com->armed = false; // auto-disarm
-                lockoutActive = true; // enable lockout after failsafe
+                com->armed = false;
+                lockoutActive = true;
                 Serial.println("[FC] FAILSAFE: Landed, auto-disarmed, lockout enabled.");
                 writeMotors(1000, 1000, 1000, 1000);
                 return;
             }
         }
 
-        mixMotors(throttleOverride); // stabilized descent
+        mixMotors(throttleOverride);
         Serial.printf("[FC] FAILSAFE DESCENT: Alt=%.2f m, Thr=%.0f\n", alt, throttleOverride);
         return;
     }
 
-    // ==============================
     // DISARMED: check lockout
-    // ==============================
     if (!com->armed) {
+        currentState = STATE_DISARMED;
+        ledController.update(currentState, currentMode, recording, photoFlash);
         throttleOverride = 1000;
         writeMotors(1000, 1000, 1000, 1000);
 
-        // Unlock only if stick-arming gesture detected
         if (lockoutActive) {
-            bool armGesture = (com->throttle < 10 && com->yaw > 90);  // Throttle low + yaw right
+            bool armGesture = (com->throttle < 10 && com->yaw > 90);
             if (armGesture) {
                 lockoutActive = false;
                 Serial.println("[FC] Lockout cleared. Stick gesture detected. Ready for ARM.");
@@ -159,50 +164,50 @@ void FlightController::update(float dt) {
         return;
     }
 
-    // ==============================
     // Prevent ARM during lockout
-    // ==============================
     if (lockoutActive && com->armed) {
-        com->armed = false; // force disarm
+        currentState = STATE_ARMED;
+        ledController.update(currentState, currentMode, recording, photoFlash);
+        com->armed = false;
         writeMotors(1000, 1000, 1000, 1000);
         Serial.println("[FC] ARM blocked due to LOCKOUT. Perform stick gesture to reset.");
         return;
     }
 
-    // TAKEOFF ASCENT
+    // TAKEOFF ASCENT logic REMOVED (commented out)
+    /*
     if (com->takeoff) {
         throttleOverride += 1.5f;
-        if (throttleOverride > 1400) throttleOverride = 1400; // cap near hover
+        if (throttleOverride > 1400) throttleOverride = 1400;
         mixMotors(throttleOverride);
         Serial.printf("[FC] TAKEOFF ASCENT: Alt=%.2f m, Thr=%.0f\n", alt, throttleOverride);
         return;
     }
+    */
 
-   // Normal flight mode
-float M1 = alt_cmd + pitch_cmd + roll_cmd - yaw_cmd;
-float M2 = alt_cmd + pitch_cmd - roll_cmd + yaw_cmd;
-float M3 = alt_cmd - pitch_cmd - roll_cmd - yaw_cmd;
-float M4 = alt_cmd - pitch_cmd + roll_cmd + yaw_cmd;
+    // Now controlled solely by armed + throttle
+    float base_throttle = map(com->throttle, 0, 255, 1000, 2000);  // Map directly
+    
+    // Prevent too low throttle (to keep motors spinning)
+    if (base_throttle < 1100) base_throttle = 1100;
 
-// Constrain before sending to writeMotors()
-M1 = constrain(M1, 1000.0f, 2000.0f);
-M2 = constrain(M2, 1000.0f, 2000.0f);
-M3 = constrain(M3, 1000.0f, 2000.0f);
-M4 = constrain(M4, 1000.0f, 2000.0f);
+    mixMotors(base_throttle);
 
+    // ✅ Explicitly set IN_FLIGHT state if armed and throttle > 0
+    if (com->armed && !com->failsafe && com->throttle > 0) {
+        currentState = STATE_IN_FLIGHT;
+    }
 
-
-throttleOverride = 1000; // reset when flying normally
-writeMotors(M1, M2, M3, M4);
+    // Update LEDs with current state
+    ledController.update(currentState, currentMode, recording, photoFlash);
 
     // Debug overall status
     static unsigned long last_status_dbg = 0;
     if (millis() - last_status_dbg > 500) {
-        Serial.printf("[FC STATUS] ARM=%d, FS=%d, TO=%d, Alt=%.2f m, Thr=%.0f\n", 
-                      com->armed, com->failsafe, com->takeoff, alt, throttleOverride);
+        Serial.printf("[FC STATUS] ARM=%d, FS=%d, Alt=%.2f m, Throttle=%d, State=%d\n", 
+                      com->armed, com->failsafe, alt, com->throttle, currentState);
         last_status_dbg = millis();
     }
-
 }
 
 

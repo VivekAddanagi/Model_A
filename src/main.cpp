@@ -4,12 +4,21 @@
 #include "ComManager.h"
 #include "SensorManager.h"
 #include "FlightController.h"
+#include "DroneLEDController.h"
+
+// 🟢 Front LED on GPIO 5, 🔴 Rear LED on GPIO 43
+DroneLEDController ledController(5, 43);
+
+// Drone state tracking
+DroneState currentState = STATE_INIT;
+FlightMode currentMode = MODE_STABLE;
+bool recording = false;
+bool photoFlash = false;
 
 // === Global Managers ===
 ComManager comManager;
 SensorManager sensorManager;
 FlightController flightController(&sensorManager, &comManager);
-
 
 // Prototypes
 FlightMode select_mode();
@@ -23,63 +32,73 @@ void setup() {
     while (!Serial);
     delay(3000);
 
-    // Initialize CC2500 receiver
+    // 🔹 Step 1: Initialize LEDs and show INIT state
+    ledController.begin();
+    currentState = STATE_INIT;
+    ledController.update(currentState, currentMode, recording, photoFlash);
+
+    // Optional: blink for 2 seconds while waiting for mode selection
+    unsigned long initStart = millis();
+    while (millis() - initStart < 2000) {
+        ledController.update(currentState, currentMode, recording, photoFlash);
+        delay(50);
+    }
+
+    // 🔹 Step 2: Initialize CC2500 receiver
     comManager.begin();
     delay(20);
 
-// Self-test the CC2500
-if (!comManager.selfTest()) {
-    Serial.println("[ERROR] CC2500 self-test failed!");
-}
+    if (!comManager.selfTest()) {
+        Serial.println("[ERROR] CC2500 self-test failed!");
+    }
 
     delay(50);
-    
-    // BMI323 Init
+
+    // 🔹 Step 3: BMI323 & BMP390 Init
     bmi323_init();
-
     delay(50);
 
-    // BMP390 Init
     if (!bmp390_init_all()) {
         Serial.println("[BMP390] Init failed!");
         return;
     }
 
-   // sensorManager.begin(101325); // default sea level pressure
-
-    // FlightController init
-    flightController.begin(); // sets up motors
+    // 🔹 Step 4: FlightController init (motors)
+    flightController.begin();
 
     Serial.println(F("\nDrone Mode Selector Starting..."));
+
+    // 🔹 Step 5: Mode selection
     FlightMode selected = select_mode();
     Serial.println("[DEBUG] Mode selected OK");
 
     apply_bmi323_mode(selected);
     apply_bmp390_mode(selected);
+
+    // 🔹 Step 6: Update LEDs with selected mode
+    currentMode = selected;
+    ledController.update(currentState, currentMode, recording, photoFlash);
+
     print_mode_configuration(selected);
     run_calibration_sequence_startup();
-   // delay(500);
 
     Serial.println("[ERROR] BMI323 FIFO setup started ");
 
-// BMI323 FIFO
     if (!bmi323_setup_fifo()) {
-    Serial.println("[ERROR] BMI323 FIFO setup failed");
-    return;
-}
-    
-    // BMP390 Init (AFTER mode selection!)
+        Serial.println("[ERROR] BMI323 FIFO setup failed");
+        return;
+    }
+
     if (!bmp390_begin()) {
         Serial.println("[ERROR] BMP390 setup failed");
     }
 
     delay(1000);
     Serial.println(F("Flight mode configuration applied."));
-    
 }
 
+
 void loop() {
-    
     static uint32_t last_ms = millis();
     uint32_t now = millis();
     float dt = (now - last_ms) * 0.001f;
@@ -104,6 +123,11 @@ void loop() {
     }
 
     // Update flight controller with dt
-    flightController.update(dt);  // only dt
+    flightController.update(dt);
+
+    // 🔹 Step 5: Update LEDs each loop
+    ledController.update(currentState, currentMode, recording, photoFlash);
+    photoFlash = false; // reset after one update
+
     delay(5); // maintain sensor update rate
 }
