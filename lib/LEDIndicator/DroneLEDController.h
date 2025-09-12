@@ -20,6 +20,8 @@ enum DroneState {
 class DroneLEDController {
 public:
   DroneLEDController(uint8_t frontPin, uint8_t rearPin);
+  uint8_t getFrontPin() const { return frontLEDPin; }
+    uint8_t getRearPin() const { return rearLEDPin; }
 
   void begin();
   void update(DroneState state, FlightMode mode, bool isRecording, bool photoTaken);
@@ -27,7 +29,7 @@ public:
 private:
   uint8_t frontLEDPin;
   uint8_t rearLEDPin;
-  uint8_t brightness = 0;
+
 
   DroneState currentState;
   FlightMode currentMode;
@@ -38,10 +40,31 @@ private:
   unsigned long blinkInterval;
   bool ledState;
 
+    
+
   void applyStateBehavior();
   void setLED(uint8_t pin, bool state);
   void breathingEffect(uint8_t pin);
   void photoFlashHandler();
+
+
+
+ 
+
+ 
+  
+
+  
+  
+
+  // NEW: state flags and PWM control members (initialize in constructor)
+  bool pwmActive;       // whether LED PWM is attached
+  bool recLedState;     // recording LED toggle state
+  uint8_t brightness;   // current PWM brightness 0..255
+
+  // NEW: LEDC channel to use for breathing effect (choose a channel not used anywhere else)
+  static const uint8_t LEDC_CHANNEL = 4;
+
 };
 
 #endif

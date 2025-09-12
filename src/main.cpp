@@ -34,6 +34,17 @@ void setup() {
 
     // 🔹 Step 1: Initialize LEDs and show INIT state
     ledController.begin();
+    // Quick hardware blink test to verify both pins respond (do this even if rear pin is fixed on PCB)
+// Quick hardware blink test to verify both pins respond
+digitalWrite(ledController.getFrontPin(), HIGH);
+delay(200);
+digitalWrite(ledController.getFrontPin(), LOW);
+delay(200);
+digitalWrite(ledController.getRearPin(), HIGH);
+delay(200);
+digitalWrite(ledController.getRearPin(), LOW);
+delay(200);
+
     currentState = STATE_INIT;
     ledController.update(currentState, currentMode, recording, photoFlash);
 
@@ -125,9 +136,6 @@ void loop() {
     // Update flight controller with dt
     flightController.update(dt);
 
-    // 🔹 Step 5: Update LEDs each loop
-    ledController.update(currentState, currentMode, recording, photoFlash);
-    photoFlash = false; // reset after one update
-
+    
     delay(5); // maintain sensor update rate
 }
