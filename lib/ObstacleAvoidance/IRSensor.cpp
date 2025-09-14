@@ -1,12 +1,6 @@
 #include <Arduino.h>
 #include "IRSensor.h"
 
-// === GPIO setup ===
-#define EMITTER_FRONT  40
-#define EMITTER_RIGHT  41
-#define EMITTER_BACK   38
-#define EMITTER_LEFT   39
-#define IR_RECEIVER    1  // ADC pin
 
 // Timing constants
 #define IR_SETTLE_TIME_MICROS  200
@@ -45,6 +39,15 @@ void IRSensor::poll() {
     }
 }
 
+void IRSensor::setThreshold(int threshold) {
+    dangerThreshold = threshold;
+}
+
+int IRSensor::getThreshold() const {
+    return dangerThreshold;
+}
+
+
 float IRSensor::getDistance(Direction dir) const {
     // Currently returns raw ADC value (0–4095).
     // To convert to cm, you’ll need calibration.
@@ -52,8 +55,10 @@ float IRSensor::getDistance(Direction dir) const {
 }
 
 bool IRSensor::isNear(Direction dir, int threshold) const {
+    if (threshold < 0) threshold = dangerThreshold;  // fallback to internal threshold
     return readings[dir] > threshold;
 }
+
 
 void IRSensor::handleAvoidance() {
     const int dangerThreshold = 2000; // Tune via calibration

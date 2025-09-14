@@ -2,6 +2,8 @@
 #include <driver/mcpwm.h>
 #include "soc/mcpwm_periph.h"
 #include "DroneLEDController.h"
+#include "IRSensor.h"
+
 
 // FlightController.cpp
 extern DroneState currentState;
@@ -9,6 +11,8 @@ extern FlightMode currentMode;
 extern bool recording;
 extern bool photoFlash;
 extern DroneLEDController ledController;
+extern IRSensor irSensor;  // declare external reference (defined in main.cpp)
+
 
 
 float FlightController::PID_Update(PID &pid, float setpoint, float measured, float dt) {
@@ -112,7 +116,8 @@ void FlightController::begin() {
 
 
 void FlightController::update(float dt) {
-    // --- Sensor readings ---
+
+     // --- Sensor readings ---
     float roll  = estimated_roll;
     float pitch = estimated_pitch;
     float yaw   = estimated_yaw;
@@ -123,6 +128,31 @@ void FlightController::update(float dt) {
     float pitch_cmd = PID_Update(pid_pitch, pitch_set, pitch, dt);
     float yaw_cmd   = PID_Update(pid_yaw,   yaw_set,   yaw,   dt);
     float alt_cmd   = PID_Update(pid_alt,   alt_set,   alt,   dt);
+
+    // Poll IR sensors regularly
+irSensor.poll();
+
+
+if (irSensor.isNear(FRONT, irSensor.getThreshold())) {
+    Serial.println("[AVOID] Obstacle ahead! Limiting forward pitch.");
+    pitch_cmd = min(pitch_cmd, 0.0f); // block forward movement
+}
+
+if (irSensor.isNear(LEFT, irSensor.getThreshold())) {
+    Serial.println("[AVOID] Obstacle left! Nudging right.");
+    roll_cmd = abs(roll_cmd); // force right roll
+}
+
+if (irSensor.isNear(RIGHT, irSensor.getThreshold())) {
+    Serial.println("[AVOID] Obstacle right! Nudging left.");
+    roll_cmd = -abs(roll_cmd); // force left roll
+}
+
+if (irSensor.isNear(BACK, irSensor.getThreshold())) {
+    Serial.println("[AVOID] Obstacle behind! Blocking reverse motion.");
+    pitch_cmd = max(pitch_cmd, 0.0f); // block backward movement
+}
+
 
     // --- Motor mixing ---
     auto mixMotors = [&](float base) {

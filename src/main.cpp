@@ -5,6 +5,10 @@
 #include "SensorManager.h"
 #include "FlightController.h"
 #include "DroneLEDController.h"
+#include "IRSensor.h"
+
+IRSensor irSensor;
+
 
 // 🟢 Front LED on GPIO 5, 🔴 Rear LED on GPIO 43
 DroneLEDController ledController(5, 43);
@@ -76,6 +80,9 @@ delay(200);
 
     // 🔹 Step 4: FlightController init (motors)
     flightController.begin();
+    // 🔹 Step 4.5: Initialize IR sensors
+irSensor.begin();
+Serial.println("[IR] Sensors initialized.");
 
     Serial.println(F("\nDrone Mode Selector Starting..."));
 
