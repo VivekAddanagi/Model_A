@@ -164,35 +164,75 @@ void FlightController::update(float dt) {
     static float throttleOverride = 1000;
     static uint32_t landedTimer   = 0;
 
-    // --- FAILSAFE DESCENT ---
-    if (com->failsafe) {
-        currentState = STATE_FAILSAFE;
+   if (com->failsafe) {
+    currentState = STATE_FAILSAFE;
 
-        if (alt > 0.2f) {
-            throttleOverride = max(1100.0f, throttleOverride - 0.5f);
-            landedTimer = millis();
-        } else {
-            if (millis() - landedTimer > 2000) {
-                throttleOverride = 1000;
-                com->armed = false;
-                lockoutActive = true;
-                Serial.println("[FC] FAILSAFE: Landed, auto-disarmed, lockout enabled.");
-                writeMotors(1000, 1000, 1000, 1000);
-                digitalWrite(7, HIGH);
-                ledController.update(currentState, currentMode, recording, photoFlash);
-                digitalWrite(7, LOW);
-                photoFlash = false;
-                return;
-
-            }
+    // --- Base descent throttle ---
+    if (alt > 0.2f) {
+        throttleOverride = max(1100.0f, throttleOverride - 0.5f);
+        landedTimer = millis();
+    } else {
+        if (millis() - landedTimer > 2000) {
+            throttleOverride = 1000;
+            com->armed = false;
+            lockoutActive = true;
+            Serial.println("[FC] FAILSAFE: Landed, auto-disarmed, lockout enabled.");
+            writeMotors(1000, 1000, 1000, 1000);
+            digitalWrite(7, HIGH);
+            ledController.update(currentState, currentMode, recording, photoFlash);
+            digitalWrite(7, LOW);
+            photoFlash = false;
+            return;
         }
-
-        mixMotors(throttleOverride);
-        Serial.printf("[FC] FAILSAFE DESCENT: Alt=%.2f m, Thr=%.0f\n", alt, throttleOverride);
-        ledController.update(currentState, currentMode, recording, photoFlash);
-        photoFlash = false;
-        return;
     }
+
+    // --- Adaptive obstacle avoidance ---
+    float roll_cmd_fs  = 0.0f;
+    float pitch_cmd_fs = 0.0f;
+
+    auto adaptiveTilt = [&](Direction dir, int8_t sign) {
+        // Measure distance from IR sensor (smaller distance = stronger push)
+        float dist = irSensor.getDistance(dir);
+        float threshold = irSensor.getThreshold();
+        
+        if (dist < threshold) {
+            // Scale tilt between 0 → maxTilt depending on proximity
+            float strength = map(dist, threshold, 0, 0, 100);  // closer → up to 100
+            return sign * constrain(strength, 20.0f, 100.0f);   // at least 20 tilt
+        }
+        return 0.0f;
+    };
+
+    // FRONT → push back, BACK → push forward
+    pitch_cmd_fs += adaptiveTilt(FRONT, -1);
+    pitch_cmd_fs += adaptiveTilt(BACK,  1);
+
+    // LEFT → push right, RIGHT → push left
+    roll_cmd_fs  += adaptiveTilt(LEFT,  1);
+    roll_cmd_fs  += adaptiveTilt(RIGHT, -1);
+
+    // Mix motors with avoidance tilt
+    auto mixMotorsFailsafe = [&](float base) {
+        float M1 = base + pitch_cmd_fs + roll_cmd_fs;
+        float M2 = base + pitch_cmd_fs - roll_cmd_fs;
+        float M3 = base - pitch_cmd_fs - roll_cmd_fs;
+        float M4 = base - pitch_cmd_fs + roll_cmd_fs;
+        writeMotors(M1, M2, M3, M4);
+    };
+
+    mixMotorsFailsafe(throttleOverride);
+
+    Serial.printf("[FC] FAILSAFE DESCENT: Alt=%.2f m, Thr=%.0f, RollCmd=%.1f, PitchCmd=%.1f\n",
+                  alt, throttleOverride, roll_cmd_fs, pitch_cmd_fs);
+
+    digitalWrite(7, HIGH);
+    ledController.update(currentState, currentMode, recording, photoFlash);
+    digitalWrite(7, LOW);
+    photoFlash = false;
+    return;
+}
+
+
 
     // --- OBSTACLE LOCKOUT SAFETY ---
 bool obstacleBlocking = (
@@ -235,7 +275,7 @@ if (obstacleBlocking) {
         writeMotors(1000, 1000, 1000, 1000);
 
         if (lockoutActive) {
-            bool armGesture = (com->throttle < 10 && com->yaw > 90);
+            bool armGesture = (com->throttle < 10 && com->yaw > 100   && com->pitch < -100 && com->roll < -100);
             if (armGesture) {
                 lockoutActive = false;
                 Serial.println("[FC] Lockout cleared. Stick gesture detected. Ready for ARM.");
@@ -292,6 +332,47 @@ if (obstacleBlocking) {
 
 
 
+
+
+// TODO: In failsafe descent, add horizontal drift compensation from IMU (gyro/accel) 
+//       to ensure drone doesn’t tilt too much from avoidance push and topple.
+
+// TODO: Add adaptive throttle reduction rate in failsafe 
+//       (faster descent if high altitude, slower near ground).
+
+// TODO: Consider adding obstacle height estimation 
+//       (use multiple IR sensors angled down + barometer) 
+//       so drone can avoid ground obstacles during descent, not just side walls.
+
+// TODO: Add configurable safety margins (user can set IR sensor threshold 
+//       depending on indoor/outdoor flying space).
+
+// TODO: Expand stick gesture system (e.g., different gestures for ARM clear, 
+//       emergency motor cut, mode switching) for more pilot control.
+
+// TODO: Add "soft takeoff ramp" (gradual motor throttle ramp on takeoff) 
+//       to prevent sudden jerk when arming with throttle > 0.
+
+// TODO: Add watchdog for sensor polling (if IRSensor.poll() or IMU fails to update, 
+//       enter failsafe immediately).
+
+// TODO: Improve obstacle avoidance logic: instead of blocking/forcing tilt instantly, 
+//       use smoothing filter (low-pass) to avoid sudden jerks near walls.
+
+// TODO: Add non-linear adaptive tilt response for failsafe avoidance 
+//       (gentle far from obstacle, exponential stronger response when very close).
+
+// TODO: Save failsafe events into flight log (blackbox or SD card) 
+//       for post-flight debugging and tuning.
+
+// TODO: Allow failsafe recovery if RC signal restored mid-flight 
+//       (but only if altitude > safe threshold and no nearby obstacles).
+
+// TODO: Add battery failsafe (low voltage auto-land) 
+//       integrated with existing failsafe descent logic.
+
+// TODO: Add motor fault detection (if one motor output differs too much, 
+//       trigger controlled shutdown or auto-land).
 
 
 
