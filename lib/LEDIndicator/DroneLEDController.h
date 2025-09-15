@@ -12,7 +12,8 @@ enum DroneState {
   STATE_TAKEOFF,
   STATE_IN_FLIGHT,
   STATE_FAILSAFE,
-  STATE_DISARMED   // <-- add this
+  STATE_DISARMED ,
+  STATE_OBSTACLE_BLOCK
 };
 
 

@@ -145,6 +145,15 @@ void DroneLEDController::applyStateBehavior() {
                 lastBlinkUpdate = currentMillis;
             }
             break;
+         case STATE_OBSTACLE_BLOCK:
+    if (currentMillis - lastBlinkUpdate >= 100) {  // fast blink
+        blinkLedState = !blinkLedState;
+        setLED(frontLEDPin, blinkLedState);
+        setLED(rearLEDPin, blinkLedState);
+        lastBlinkUpdate = currentMillis;
+    }
+    break;
+   
     }
 
     // NOTE: photoFlashHandler() is called only from update(), not here, to avoid double-processing.

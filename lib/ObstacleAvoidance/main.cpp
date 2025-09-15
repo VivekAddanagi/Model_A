@@ -1,3 +1,4 @@
+/*
 #include <Arduino.h>
 #include "IRSensor.h"
 
@@ -20,3 +21,4 @@ void loop() {
 
     // ... Insert rest of drone flight control logic here ...
 }
+*/

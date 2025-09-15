@@ -130,29 +130,27 @@ void FlightController::update(float dt) {
     float alt_cmd   = PID_Update(pid_alt,   alt_set,   alt,   dt);
 
     // Poll IR sensors regularly
-irSensor.poll();
+    irSensor.poll();
 
+    if (irSensor.isNear(FRONT, irSensor.getThreshold())) {
+        Serial.println("[AVOID] Obstacle ahead! Limiting forward pitch.");
+        pitch_cmd = min(pitch_cmd, 0.0f); // block forward movement
+    }
 
-if (irSensor.isNear(FRONT, irSensor.getThreshold())) {
-    Serial.println("[AVOID] Obstacle ahead! Limiting forward pitch.");
-    pitch_cmd = min(pitch_cmd, 0.0f); // block forward movement
-}
+    if (irSensor.isNear(LEFT, irSensor.getThreshold())) {
+        Serial.println("[AVOID] Obstacle left! Nudging right.");
+        roll_cmd = abs(roll_cmd); // force right roll
+    }
 
-if (irSensor.isNear(LEFT, irSensor.getThreshold())) {
-    Serial.println("[AVOID] Obstacle left! Nudging right.");
-    roll_cmd = abs(roll_cmd); // force right roll
-}
+    if (irSensor.isNear(RIGHT, irSensor.getThreshold())) {
+        Serial.println("[AVOID] Obstacle right! Nudging left.");
+        roll_cmd = -abs(roll_cmd); // force left roll
+    }
 
-if (irSensor.isNear(RIGHT, irSensor.getThreshold())) {
-    Serial.println("[AVOID] Obstacle right! Nudging left.");
-    roll_cmd = -abs(roll_cmd); // force left roll
-}
-
-if (irSensor.isNear(BACK, irSensor.getThreshold())) {
-    Serial.println("[AVOID] Obstacle behind! Blocking reverse motion.");
-    pitch_cmd = max(pitch_cmd, 0.0f); // block backward movement
-}
-
+    if (irSensor.isNear(BACK, irSensor.getThreshold())) {
+        Serial.println("[AVOID] Obstacle behind! Blocking reverse motion.");
+        pitch_cmd = max(pitch_cmd, 0.0f); // block backward movement
+    }
 
     // --- Motor mixing ---
     auto mixMotors = [&](float base) {
@@ -180,11 +178,11 @@ if (irSensor.isNear(BACK, irSensor.getThreshold())) {
                 lockoutActive = true;
                 Serial.println("[FC] FAILSAFE: Landed, auto-disarmed, lockout enabled.");
                 writeMotors(1000, 1000, 1000, 1000);
-                digitalWrite(2, HIGH);
-ledController.update(currentState, currentMode, recording, photoFlash);
-digitalWrite(2, LOW);
-photoFlash = false;
-return;
+                digitalWrite(7, HIGH);
+                ledController.update(currentState, currentMode, recording, photoFlash);
+                digitalWrite(7, LOW);
+                photoFlash = false;
+                return;
 
             }
         }
@@ -195,6 +193,40 @@ return;
         photoFlash = false;
         return;
     }
+
+    // --- OBSTACLE LOCKOUT SAFETY ---
+bool obstacleBlocking = (
+    irSensor.isNear(FRONT, irSensor.getThreshold()) ||
+    irSensor.isNear(LEFT,  irSensor.getThreshold()) ||
+    irSensor.isNear(RIGHT, irSensor.getThreshold()) ||
+    irSensor.isNear(BACK,  irSensor.getThreshold())
+);
+
+if (obstacleBlocking) {
+    if (!com->armed) {
+        // Prevent ARM if obstacle detected
+        Serial.println("[SAFETY] Obstacle detected! ARM blocked.");
+        com->armed = false;
+        currentState = STATE_OBSTACLE_BLOCK;   // 🔴 Show LED warning
+        digitalWrite(7, HIGH);
+        ledController.update(currentState, currentMode, recording, photoFlash);
+        digitalWrite(7, LOW);
+        photoFlash = false;
+        return;
+    } 
+    else if (com->armed && com->throttle < 10) {
+        // Already armed, but throttle low (on ground) → block takeoff
+        Serial.println("[SAFETY] Obstacle detected! TAKEOFF blocked.");
+        writeMotors(1000, 1000, 1000, 1000);
+        currentState = STATE_OBSTACLE_BLOCK;   // 🔴 Show LED warning
+        digitalWrite(7, HIGH);
+        ledController.update(currentState, currentMode, recording, photoFlash);
+        digitalWrite(7, LOW);
+        photoFlash = false;
+        return;
+    }
+}
+
 
     // --- DISARMED ---
     if (!com->armed) {
@@ -210,12 +242,11 @@ return;
             }
         }
 
-        digitalWrite(2, HIGH);
-ledController.update(currentState, currentMode, recording, photoFlash);
-digitalWrite(2, LOW);
-photoFlash = false;
-return;
-
+        digitalWrite(7, HIGH);
+        ledController.update(currentState, currentMode, recording, photoFlash);
+        digitalWrite(7, LOW);
+        photoFlash = false;
+        return;
     }
 
     // --- Prevent ARM during lockout ---
@@ -224,12 +255,11 @@ return;
         com->armed = false;
         writeMotors(1000, 1000, 1000, 1000);
         Serial.println("[FC] ARM blocked due to LOCKOUT.");
-        digitalWrite(2, HIGH);
-ledController.update(currentState, currentMode, recording, photoFlash);
-digitalWrite(2, LOW);
-photoFlash = false;
-return;
-
+        digitalWrite(7, HIGH);
+        ledController.update(currentState, currentMode, recording, photoFlash);
+        digitalWrite(7, LOW);
+        photoFlash = false;
+        return;
     }
 
     // --- NORMAL FLIGHT ---
@@ -244,11 +274,10 @@ return;
         currentState = STATE_ARMED;
     }
 
-    digitalWrite(2, HIGH);
-ledController.update(currentState, currentMode, recording, photoFlash);
-digitalWrite(2, LOW);
-photoFlash = false;
-
+    digitalWrite(7, HIGH);
+    ledController.update(currentState, currentMode, recording, photoFlash);
+    digitalWrite(7, LOW);
+    photoFlash = false;
 
     // Debug status
     static unsigned long last_status_dbg = 0;
