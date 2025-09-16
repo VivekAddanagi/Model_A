@@ -246,3 +246,13 @@ void SensorManager::updateAltitude(float ax, float ay, float az,
     alt_est = h;
     vel_z = v;
 }
+
+
+// -------------------- Getter for altitude --------------------
+float SensorManager::getAltitude() const {
+    // Option A: Use EKF estimate (smoother, better for flight control)
+    return alt_est;
+
+    // Option B: Use raw baro altitude if you prefer
+    // return latest_altitude_m;
+}

@@ -33,6 +33,18 @@ public:
                         float baro_alt, float dt);
      float alt_est = 0.0f;
 
+    // for telemetry output
+    float getAltitudeMeters() const { return getAltitude(); }
+
+    float getAccelX() const { return latest_ax; }
+    float getAccelY() const { return latest_ay; }
+    float getAccelZ() const { return latest_az; }
+
+    float getGyroX() const { return latest_gx; }
+    float getGyroY() const { return latest_gy; }
+    float getGyroZ() const { return latest_gz; }
+
+
 private:
     // ------- existing BMI323-related members (preserve original names) -------
     // (Assumed types/variables referenced in original SensorManager.cpp)

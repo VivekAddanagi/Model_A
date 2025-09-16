@@ -364,6 +364,8 @@ void FlightController::update(float dt) {
 // TODO: Add motor fault detection (if one motor output differs too much, 
 //       trigger controlled shutdown or auto-land).
 
+// TODO : MAX TILT LIMITS BASED ON TESTING ,Throttle smoothing for safety ,battery voltage monitoring ,Failsafe recovery logic ,Data logging for analysis
+
 
 
 

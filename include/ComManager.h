@@ -20,6 +20,9 @@ int8_t getRSSI() const;
     int8_t yaw, pitch, roll;
     uint8_t throttle, mode, armed , takeoff, failsafe, photo, video;
 
+    // Telemetry transmission helper
+     bool sendTelemetryPacket(const uint8_t* data, uint8_t len);
+
 private:
     CC2500Receiver _cc2500;
     bool _newData;

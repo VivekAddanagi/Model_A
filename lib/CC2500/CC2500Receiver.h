@@ -64,6 +64,7 @@ public:
     void begin();
     bool receivePacket();
     uint8_t _readRegister(uint8_t addr);
+    void _strobeCommand(uint8_t cmd);
 
     // Data access
     bool getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
@@ -105,8 +106,6 @@ private:
     void _reset();
     bool _waitForChipReady();
     void _writeRegister(uint8_t addr, uint8_t value);
-    
-    void _strobeCommand(uint8_t cmd);
     void _configureRadio();
     void _loadPATable();
     bool _readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out);

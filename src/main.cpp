@@ -7,6 +7,9 @@
 #include "DroneLEDController.h"
 #include "IRSensor.h"
 #include "GeofenceRSSI.h"
+#include "TelemetryTx.h"
+
+
 
 
 IRSensor irSensor;
@@ -27,6 +30,8 @@ bool photoFlash = false;
 ComManager comManager;
 SensorManager sensorManager;
 FlightController flightController(&sensorManager, &comManager);
+
+TelemetryTx telemetry(&comManager, &sensorManager);
 
 // Prototypes
 FlightMode select_mode();
@@ -117,6 +122,7 @@ Serial.println("[IR] Sensors initialized.");
 
     delay(1000);
     Serial.println(F("Flight mode configuration applied."));
+    telemetry.begin();
 }
 
 
@@ -154,6 +160,8 @@ void loop() {
     // Update flight controller with dt
     flightController.update(dt);
     t_fc = micros();
+
+      telemetry.update(); // send telemetry periodically
 
     // --- Calculate timings ---
     uint32_t dur_sensors = t_sensors - t_start;

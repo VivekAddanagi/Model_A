@@ -51,3 +51,27 @@ bool ComManager::selfTest() {
 int8_t ComManager::getRSSI() const {
     return _cc2500.getLastRSSI();
 }
+
+bool ComManager::sendTelemetryPacket(const uint8_t* data, uint8_t len) {
+    if (len == 0) return false;
+
+    // Put radio into idle
+    _cc2500._strobeCommand(0x36); // SIDLE
+    delayMicroseconds(50);
+
+    // Write into TX FIFO
+    digitalWrite(CC2500_CS_PIN, LOW);
+    SPI.transfer(0x7F | 0x40); // burst write
+    for (uint8_t i = 0; i < len; i++) {
+        SPI.transfer(data[i]);
+    }
+    digitalWrite(CC2500_CS_PIN, HIGH);
+
+    // Send
+    _cc2500._strobeCommand(0x35); // STX
+    delayMicroseconds(200);
+
+    // Back to RX
+    _cc2500._strobeCommand(0x34); // SRX
+    return true;
+}
