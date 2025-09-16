@@ -370,15 +370,19 @@ bool CC2500Receiver::receivePacket() {
     bool ph      = _packet[9];
     bool vid     = _packet[10];
 
-    // Status bytes
-    int8_t rssi_dbm;
-    uint8_t lqi;
-    _processStatusBytes(_packet[11], _packet[12], rssi_dbm, lqi, crcOk);
+  // Status bytes
+int8_t rssi_dbm;
+uint8_t lqi;
+_processStatusBytes(_packet[11], _packet[12], rssi_dbm, lqi, crcOk);
 
-    // Accumulate RSSI/LQI for averaging
-    rssiSum += rssi_dbm;
-    lqiSum += lqi;
-    rssiCount++;
+// Store last RSSI (for external modules)
+_lastRssiDbm = rssi_dbm;
+
+// Accumulate RSSI/LQI for averaging
+rssiSum += rssi_dbm;
+lqiSum += lqi;
+rssiCount++;
+
 
     // Print once every 500 ms
     if (currentTime - lastPrintTime >= 500) {

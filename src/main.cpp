@@ -6,8 +6,12 @@
 #include "FlightController.h"
 #include "DroneLEDController.h"
 #include "IRSensor.h"
+#include "GeofenceRSSI.h"
+
 
 IRSensor irSensor;
+GeofenceRSSI geofence; // default-constructed
+
 
 
 // 🟢 Front LED on GPIO 5, 🔴 Rear LED on GPIO 43
@@ -123,14 +127,17 @@ void loop() {
     last_ms = now;
     if (dt <= 0.0f || dt > 0.2f) dt = 0.01f; // safe fallback
 
+    // --- Timing variables ---
+    uint32_t t_start = micros();
+    uint32_t t_sensors, t_com, t_fc, t_end;
+
     // Update sensors + EKF
     sensorManager.update();
+    t_sensors = micros();
 
-    delayMicroseconds(500); // small delay to allow FIFO to fill
     // Update RC inputs
     comManager.update();
-
-    delayMicroseconds(500); // small delay to allow FIFO to fill
+    t_com = micros();
 
     // Map RC input to flight controller setpoints if new data received
     if (comManager.hasNewData()) {
@@ -140,9 +147,27 @@ void loop() {
         flightController.alt_set   = map(comManager.throttle, 0, 255, 0, 10);   // meters
     }
 
+    // enforce geofence — reads comManager RSSI and sensor altitude, may modify setpoints
+    geofence.update(&comManager, &sensorManager, &flightController);
+
+
     // Update flight controller with dt
     flightController.update(dt);
+    t_fc = micros();
 
-    
+    // --- Calculate timings ---
+    uint32_t dur_sensors = t_sensors - t_start;
+    uint32_t dur_com     = t_com - t_sensors;
+    uint32_t dur_fc      = t_fc - t_com;
+    uint32_t dur_total   = t_fc - t_start;
+
+    // Print every 200 ms to avoid spamming serial
+    static uint32_t last_dbg = millis();
+    if (millis() - last_dbg > 200) {
+        Serial.printf("[TIME] Sensors: %lu us | Com: %lu us | FC: %lu us | Total: %lu us\n",
+                      dur_sensors, dur_com, dur_fc, dur_total);
+        last_dbg = millis();
+    }
+
     delay(5); // maintain sensor update rate
 }

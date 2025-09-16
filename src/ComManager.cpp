@@ -47,3 +47,7 @@ bool ComManager::selfTest() {
 
     return true;
 }
+
+int8_t ComManager::getRSSI() const {
+    return _cc2500.getLastRSSI();
+}

@@ -75,6 +75,9 @@ public:
     // Frequency/channel tuning
     void setFrequency(uint32_t freq);
     void setChannel(uint8_t ch);
+    // CC2500Receiver.h (add to public section)
+    int8_t getLastRSSI() const { return _lastRssiDbm; }
+
 
 private:
     // Pins
@@ -114,6 +117,9 @@ private:
     void _debugPrintPacket(const uint8_t* data, uint8_t len);
     uint8_t _readMARCState();
     void _printConfigSummary();
+    // class member (in CC2500Receiver.h private section)
+ int8_t _lastRssiDbm = -127; // add this as a private field
+
     
     // SPI helpers
     void _select();
