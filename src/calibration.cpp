@@ -113,7 +113,7 @@ static void print_calibration_data() {
 // ===================== Main Calibration Flow =====================
 void run_calibration_sequence_startup() {
     Serial.println(F("[CALIB] Performing fresh calibration before flight..."));
-    wait_for_user_confirmation();
+  //  wait_for_user_confirmation();
 
    
     // Gyro calibration

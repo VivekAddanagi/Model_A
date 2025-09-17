@@ -58,7 +58,7 @@ static bool take_pressure_temp_average(float& avg_p, float& avg_t) {
             ps.push_back(p);
             ts.push_back(t);
         }
-        delay(15);
+        delay(10);
     }
     if ((int)ps.size() < MIN_VALID) return false;
 
@@ -81,7 +81,7 @@ static bool take_pressure_temp_average(float& avg_p, float& avg_t) {
 // ==================== Calibration (Option A): pass sea-level pressure (Pa) ====================
 int bmp390_calibrate_offset(float sea_level_pressure_pa) {
     Serial.println("[CALIB] Starting BMP390 calibration...");
-    delay(400);
+    delay(100);
 
     float avg_p = 0.0f, avg_t = 0.0f;
     if (!take_pressure_temp_average(avg_p, avg_t)) {
@@ -116,7 +116,7 @@ int bmp390_calibrate_offset(float sea_level_pressure_pa) {
 // ==================== Calibration (Option B): pass known field altitude (m) ====================
 int bmp390_calibrate_with_altitude(float field_altitude_m) {
     Serial.println("[CALIB] Starting BMP390 calibration (with altitude)...");
-    delay(400);
+    delay(100);
 
     float avg_p = 0.0f, avg_t = 0.0f;
     if (!take_pressure_temp_average(avg_p, avg_t)) {

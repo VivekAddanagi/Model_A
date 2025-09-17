@@ -126,7 +126,7 @@ bool bmi323_init(void) {
 
     // --- Reset Sensor ---
     bmi323_writeRegister(CMD_REG, RESET_CMD);
-    delay(200);
+    delay(100);
 
     // After soft-reset the device may revert to I2C mode; perform the required dummy SPI read
     // with CS low to switch back to SPI operation (per BMI323 rules).
@@ -134,7 +134,7 @@ bool bmi323_init(void) {
     delay(5);
 
     bmi323_set_axis_remap(0x00);
-    delay(200);
+    delay(100);
 
     // --- Feature Engine Initialization (Required for Self-Test) ---
     bmi323_writeRegister(0x12, 0x012C);             // FEATURE_IO2: startup_config_0
@@ -147,7 +147,7 @@ bool bmi323_init(void) {
     for (int i = 0; i < 50; ++i) {
         uint16_t err_status = bmi323_readRegister(0x11); // FEATURE_IO1
         if ((err_status & 0x0F) == 0x01) {
-            Serial.println("[BMI323] Feature engine initialized.");
+           // Serial.println("[BMI323] Feature engine initialized.");
             feature_ready = true;
             break;
         }
@@ -177,13 +177,14 @@ bool bmi323_init(void) {
 
     
 
-    bmi323_data_t d;
+  /*  bmi323_data_t d;
 if (bmi323_read(&d)) {
     Serial.printf("BMI AX=%d AY=%d AZ=%d GX=%d GY=%d GZ=%d TEMP=%d\n",
                    d.ax, d.ay, d.az, d.gx, d.gy, d.gz, d.temp);
 } else {
     Serial.println("BMI read failed");
 }
+    */
 
 return true;
  
@@ -420,7 +421,7 @@ void bmi323_init_isr() {
 
 // ----------------- Public: configure ODR/mode, FIFO, INT -----------------
 bool bmi323_setup_fifo() {
-    Serial.println("[BMI323 FIFO] Start setup");
+   // Serial.println("[BMI323 FIFO] Start setup");
 
     // 1) Ensure sensors are ACTIVE (High Performance)
    // Serial.println("[BMI323 FIFO] Step 1: Set sensor HP mode");
@@ -490,7 +491,7 @@ bool bmi323_setup_fifo() {
   //  if (err) Serial.printf("[BMI323 ERROR] ERR_REG=0x%04X\n", err);
     bmi323_debug_readback();
     imu_filters_init(200.0f);
-    Serial.println("[BMI323 FIFO] Setup complete");
+  //  Serial.println("[BMI323 FIFO] Setup complete");
 
     return true;
 }
@@ -761,7 +762,7 @@ bool bmi323_quick_gyro_calibrate(GyroCalibration* cal) {
     for (int i = 0; i < 5; i++) {
         bmi323_data_t dummy;
         bmi323_read(&dummy);
-        delay(10);
+        delay(5);
     }
     
     // 2. Collect samples
@@ -774,7 +775,7 @@ bool bmi323_quick_gyro_calibrate(GyroCalibration* cal) {
         temp_y += (float)data.gy / 16.384f;
         temp_z += (float)data.gz / 16.384f;
 
-        delay(10); // 100Hz sampling
+        delay(5); // 100Hz sampling
     }
 
     // 3. Calculate biases

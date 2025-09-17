@@ -134,11 +134,11 @@ void CC2500Receiver::_loadPATable() {
     digitalWrite(_cs, HIGH);
     SPI.endTransaction();
 
-    Serial.println("[CC2500 PA TABLE] Loaded.");
+   // Serial.println("[CC2500 PA TABLE] Loaded.");
 }
 
 void CC2500Receiver::_reset() {
-    Serial.println("[CC2500 RESET] Starting enhanced reset sequence...");
+   // Serial.println("[CC2500 RESET] Starting enhanced reset sequence...");
     
     // 1. Put chip in IDLE state first
     _strobeCommand(SIDLE);
@@ -186,13 +186,13 @@ void CC2500Receiver::_reset() {
     if(partnum != 0x80) {
         Serial.printf("[CC2500 ERROR] Reset failed - PARTNUM: 0x%02X (expected 0x80)\n", partnum);
     } else {
-        Serial.println("[CC2500 RESET] Successful");
+       // Serial.println("[CC2500 RESET] Successful");
     }
 }
 
 
 void CC2500Receiver::begin() {
-    Serial.println("[CC2500] Initializing SPI and GPIO...");
+   // Serial.println("[CC2500] Initializing SPI and GPIO...");
     SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, CC2500_CS_PIN);
 
     pinMode(_cs, OUTPUT);
@@ -209,10 +209,10 @@ void CC2500Receiver::begin() {
 
     _reset();
     _configureRadio();
-    _printConfigSummary();
+  //  _printConfigSummary();
     _loadPATable();
     _strobeCommand(SRX);
-    Serial.println("[CC2500] Initialization complete.");
+   // Serial.println("[CC2500] Initialization complete.");
 }
 
 bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& roll,
@@ -443,7 +443,7 @@ bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk)
 
 
 void CC2500Receiver::_configureRadio() {
-    Serial.println("[CC2500 CONFIG] Setting registers...");
+   // Serial.println("[CC2500 CONFIG] Setting registers...");
     _writeRegister(0x00, 0x06);
     _writeRegister(0x02, 0x07);
     _writeRegister(0x03, 0x07);
@@ -477,7 +477,7 @@ void CC2500Receiver::_configureRadio() {
     _writeRegister(0x24, 0x2A);
     _writeRegister(0x25, 0x00);
     _writeRegister(0x26, 0x1F);
-    Serial.println("[CC2500 CONFIG] Configuration complete.");
+   // Serial.println("[CC2500 CONFIG] Configuration complete.");
 }
 
 void CC2500Receiver::_printConfigSummary() {
@@ -491,6 +491,8 @@ void CC2500Receiver::_printConfigSummary() {
 void CC2500Receiver::_select() { digitalWrite(_cs, LOW); }
 void CC2500Receiver::_deselect() { digitalWrite(_cs, HIGH); }
 
+
+/*
 uint8_t CC2500Receiver::_calculateChecksum(const uint8_t* data, size_t length) {
     uint8_t sum = 0;
     for (size_t i = 0; i < length; ++i) sum ^= data[i];
@@ -502,3 +504,4 @@ void CC2500Receiver::_debugPrintPacket(const uint8_t* data, uint8_t len) {
     for (int i = 0; i < len; i++) Serial.printf("%02X ", data[i]);
     Serial.println();
 }
+*/

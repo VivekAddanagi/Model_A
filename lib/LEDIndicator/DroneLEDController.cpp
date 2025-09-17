@@ -173,7 +173,7 @@ void DroneLEDController::applyStateBehavior() {
 void DroneLEDController::setLED(uint8_t pin, bool state) {
   digitalWrite(pin, state ? HIGH : LOW);
   // Debug print to help trace behavior on serial monitor
-  Serial.printf("[LED] Pin %d -> %s\n", pin, state ? "HIGH" : "LOW");
+ // Serial.printf("[LED] Pin %d -> %s\n", pin, state ? "HIGH" : "LOW");
 }
 
 

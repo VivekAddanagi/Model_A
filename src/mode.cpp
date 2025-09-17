@@ -23,7 +23,7 @@ FlightMode select_mode() {
     Serial.print(F("Enter mode (1-3): "));
 
     unsigned long start = millis();
-    while (millis() - start < 5000) {  // wait 5 seconds max
+    while (millis() - start < 100) {  // wait 5 seconds max
         if (Serial.available()) {
             char ch = Serial.read();
            // Serial.printf("[DEBUG] Got char: %c\n", ch);
@@ -61,7 +61,7 @@ void apply_bmi323_mode(FlightMode mode) {
    // Serial.printf("Yaw Gain          : %.2f\n", current_config->yaw_gain);
    // Serial.printf("Altitude Gain     : %.2f\n", current_config->altitude_gain);
 
-    Serial.println(F("=== BMI323 Mode Applied ==="));
+   // Serial.println(F("=== BMI323 Mode Applied ==="));
 }
 
 // === Apply BMP390 Config ===
@@ -83,7 +83,7 @@ void apply_bmp390_mode(FlightMode mode) {
     cfg2 |=  (0b01 << 0);   // 01 = filtered data
     bmp390_write(BMP390_FIFO_CONFIG2, cfg2);
 
-    Serial.println(F("[BMP390] FIFO DATA_SELECT set to filtered data"));
+   // Serial.println(F("[BMP390] FIFO DATA_SELECT set to filtered data"));
 }
 
 

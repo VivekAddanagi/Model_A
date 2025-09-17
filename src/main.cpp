@@ -40,23 +40,22 @@ void apply_bmi323_mode(FlightMode mode);
 void apply_bmp390_mode(FlightMode mode);
 void run_calibration_sequence_startup();
 
+
 void setup() {
     Serial.begin(115200);
-    while (!Serial);
-    delay(3000);
+unsigned long t0 = millis();
+while (!Serial && (millis() - t0) < 2000) {
+    delay(10); // wait up to 2 seconds for serial, then continue
+}
 
+   // delay(3000);
+
+   
+    // 🔹 Measure setup start time
+    unsigned long setup_start = millis();
+   
     // 🔹 Step 1: Initialize LEDs and show INIT state
     ledController.begin();
-    // Quick hardware blink test to verify both pins respond (do this even if rear pin is fixed on PCB)
-// Quick hardware blink test to verify both pins respond
-digitalWrite(ledController.getFrontPin(), HIGH);
-delay(200);
-digitalWrite(ledController.getFrontPin(), LOW);
-delay(200);
-digitalWrite(ledController.getRearPin(), HIGH);
-delay(200);
-digitalWrite(ledController.getRearPin(), LOW);
-delay(200);
 
     currentState = STATE_INIT;
     ledController.update(currentState, currentMode, recording, photoFlash);
@@ -65,35 +64,34 @@ delay(200);
     unsigned long initStart = millis();
     while (millis() - initStart < 2000) {
         ledController.update(currentState, currentMode, recording, photoFlash);
-        delay(50);
+        delay(5);
     }
 
     // 🔹 Step 2: Initialize CC2500 receiver
     comManager.begin();
-    delay(20);
+    
+    delay(2);
 
-    if (!comManager.selfTest()) {
-        Serial.println("[ERROR] CC2500 self-test failed!");
-    }
-
-    delay(50);
-
-    // 🔹 Step 3: BMI323 & BMP390 Init
+        // 🔹 Step 3: BMI323 & BMP390 Init
     bmi323_init();
-    delay(50);
+    
+    
+    delay(2);
+    
 
     if (!bmp390_init_all()) {
         Serial.println("[BMP390] Init failed!");
         return;
     }
+   
 
     // 🔹 Step 4: FlightController init (motors)
     flightController.begin();
     // 🔹 Step 4.5: Initialize IR sensors
-irSensor.begin();
-Serial.println("[IR] Sensors initialized.");
+    irSensor.begin();
+    Serial.println("[IR] Sensors initialized.");
 
-    Serial.println(F("\nDrone Mode Selector Starting..."));
+   // Serial.println(F("\nDrone Mode Selector Starting..."));
 
     // 🔹 Step 5: Mode selection
     FlightMode selected = select_mode();
@@ -106,7 +104,8 @@ Serial.println("[IR] Sensors initialized.");
     currentMode = selected;
     ledController.update(currentState, currentMode, recording, photoFlash);
 
-    print_mode_configuration(selected);
+   //****** print_mode_configuration(selected);
+
     run_calibration_sequence_startup();
 
     Serial.println("[ERROR] BMI323 FIFO setup started ");
@@ -120,9 +119,14 @@ Serial.println("[IR] Sensors initialized.");
         Serial.println("[ERROR] BMP390 setup failed");
     }
 
-    delay(1000);
+    delay(10);
     Serial.println(F("Flight mode configuration applied."));
     telemetry.begin();
+
+    // 🔹 Measure and print setup time
+    unsigned long setup_end = millis();
+    Serial.printf("[SETUP] Completed successfully in %lu ms\n", setup_end - setup_start);
+   
 }
 
 
