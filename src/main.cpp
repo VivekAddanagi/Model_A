@@ -165,7 +165,7 @@ void loop() {
     flightController.update(dt);
     t_fc = micros();
 
-      telemetry.update(); // send telemetry periodically
+     // telemetry.update(); // send telemetry periodically
 
     // --- Calculate timings ---
     uint32_t dur_sensors = t_sensors - t_start;
@@ -175,7 +175,7 @@ void loop() {
 
     // Print every 200 ms to avoid spamming serial
     static uint32_t last_dbg = millis();
-    if (millis() - last_dbg > 200) {
+    if (millis() - last_dbg > 1000) {
         Serial.printf("[TIME] Sensors: %lu us | Com: %lu us | FC: %lu us | Total: %lu us\n",
                       dur_sensors, dur_com, dur_fc, dur_total);
         last_dbg = millis();
