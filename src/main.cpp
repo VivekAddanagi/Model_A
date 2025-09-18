@@ -44,7 +44,7 @@ void run_calibration_sequence_startup();
 void setup() {
     Serial.begin(115200);
 unsigned long t0 = millis();
-while (!Serial && (millis() - t0) < 2000) {
+while (!Serial && (millis() - t0) < 200) {
     delay(10); // wait up to 2 seconds for serial, then continue
 }
 
@@ -62,7 +62,7 @@ while (!Serial && (millis() - t0) < 2000) {
 
     // Optional: blink for 2 seconds while waiting for mode selection
     unsigned long initStart = millis();
-    while (millis() - initStart < 2000) {
+    while (millis() - initStart < 500) {
         ledController.update(currentState, currentMode, recording, photoFlash);
         delay(5);
     }

@@ -47,8 +47,8 @@ static inline float altitude_from_p_and_p0(float P, float P0) {
 
 // ---------- Robust average with outlier rejection ----------
 static bool take_pressure_temp_average(float& avg_p, float& avg_t) {
-    const int N = 150;             // number of attempts
-    const int MIN_VALID = 100;     // minimum valid samples required
+    const int N = 100;             // number of attempts
+    const int MIN_VALID = 70;     // minimum valid samples required
     std::vector<float> ps; ps.reserve(N);
     std::vector<float> ts; ts.reserve(N);
 
@@ -58,7 +58,7 @@ static bool take_pressure_temp_average(float& avg_p, float& avg_t) {
             ps.push_back(p);
             ts.push_back(t);
         }
-        delay(10);
+        delay(5);
     }
     if ((int)ps.size() < MIN_VALID) return false;
 
