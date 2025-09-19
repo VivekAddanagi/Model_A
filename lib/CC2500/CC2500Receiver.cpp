@@ -389,7 +389,7 @@ rssiCount++;
 
 
     // Print once every 500 ms
-    if (currentTime - lastPrintTime >= 000) {
+    if (currentTime - lastPrintTime >= 500) {
         lastPrintTime = currentTime;
 
         float lossRate = (_expectedPackets > 0) ? 

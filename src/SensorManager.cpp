@@ -174,10 +174,10 @@ void SensorManager::process_bmp390_fifo() {
 
     if (millis() - last_print_ms >= PRINT_INTERVAL_MS) {
         last_print_ms = millis();
-      //  Serial.printf(
-          //  "[BMP390] Gap:%lu ms | TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m | Frames=%d\n",
-          //  read_gap, t_filt, pressure_filtered, alt_ground, alt_sea, (int)pressures.size()
-      //  );
+        Serial.printf(
+            "[BMP390] Gap:%lu ms | TEMP: %.2f °C | P: %.2f Pa | AltG: %.2f m | AltS: %.2f m | Frames=%d\n",
+            read_gap, t_filt, pressure_filtered, alt_ground, alt_sea, (int)pressures.size()
+        );
     }
 }
 
