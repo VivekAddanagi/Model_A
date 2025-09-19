@@ -49,6 +49,8 @@
 #define CC2500_START_BYTE     0x88
 #define CC2500_RX_STATUS_SIZE 2
 #define RSSI_OFFSET_250K      72
+#define CC2500_RXBYTES 0x3B
+
 
 // =============================== CC2500 Receiver Class ===============================
 class CC2500Receiver {
@@ -118,6 +120,8 @@ private:
     void _printConfigSummary();
     // class member (in CC2500Receiver.h private section)
  int8_t _lastRssiDbm = -127; // add this as a private field
+
+  bool _isFifoStale();
 
     
     // SPI helpers

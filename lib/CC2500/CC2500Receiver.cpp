@@ -332,13 +332,17 @@ bool CC2500Receiver::receivePacket() {
         return false;  // no packet available
     }
 
-    // Validate the packet
-    if (!_verifyPacket(_packet, len, crcOk)) {
-        if (!crcOk) crcFails++;
-        else if (len != CC2500_PACKET_SIZE) lenFails++;
-        else if (_packet[0] != CC2500_START_BYTE) startByteFails++;
-        return false; // invalid packet, skip
+  if (!_verifyPacket(_packet, len, crcOk)) {
+    if (!crcOk) {
+        crcFails++;
+        _strobeCommand(SIDLE);
+        _strobeCommand(SFRX);   // flush corrupted data
+        _strobeCommand(SRX);    // go back to RX
     }
+    else if (len != CC2500_PACKET_SIZE) lenFails++;
+    else if (_packet[0] != CC2500_START_BYTE) startByteFails++;
+    return false; // invalid packet, skip
+}
 
     // ✅ Valid packet
     _receivedPackets++;
@@ -385,7 +389,7 @@ rssiCount++;
 
 
     // Print once every 500 ms
-    if (currentTime - lastPrintTime >= 500) {
+    if (currentTime - lastPrintTime >= 000) {
         lastPrintTime = currentTime;
 
         float lossRate = (_expectedPackets > 0) ? 
@@ -416,12 +420,26 @@ rssiCount++;
         */
     }
 
-    // Flush FIFO once per call to avoid stale data
+    // Flush FIFO only if stale data detected
+if (_isFifoStale()) {
     _strobeCommand(SIDLE);
     _strobeCommand(SFRX);
     _strobeCommand(SRX);
+}
+
 
     return anyPacketReceived;
+}
+
+bool CC2500Receiver::_isFifoStale() {
+    uint8_t rxBytes = _readRegister(CC2500_RXBYTES);  
+    // Bit 7 = RX FIFO overflow flag
+    // Bits 6:0 = number of bytes in RX FIFO
+    bool overflow = rxBytes & 0x80;
+    uint8_t numBytes = rxBytes & 0x7F;
+
+    // Stale if overflow OR if unexpected size
+    return (overflow || (numBytes > CC2500_PACKET_SIZE));
 }
 
 
@@ -477,6 +495,8 @@ void CC2500Receiver::_configureRadio() {
     _writeRegister(0x24, 0x2A);
     _writeRegister(0x25, 0x00);
     _writeRegister(0x26, 0x1F);
+    _writeRegister(0x2C, 0x81);
+    _writeRegister(0x2D, 0x35);
    // Serial.println("[CC2500 CONFIG] Configuration complete.");
 }
 

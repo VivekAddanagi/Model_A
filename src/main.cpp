@@ -131,6 +131,7 @@ while (!Serial && (millis() - t0) < 200) {
 
 
 void loop() {
+
     static uint32_t last_ms = millis();
     uint32_t now = millis();
     float dt = (now - last_ms) * 0.001f;
@@ -141,13 +142,15 @@ void loop() {
     uint32_t t_start = micros();
     uint32_t t_sensors, t_com, t_fc, t_end;
 
+     // Update RC inputs
+    comManager.update();
+    t_com = micros();
+
     // Update sensors + EKF
     sensorManager.update();
     t_sensors = micros();
 
-    // Update RC inputs
-    comManager.update();
-    t_com = micros();
+   
 
     // Map RC input to flight controller setpoints if new data received
     if (comManager.hasNewData()) {
@@ -165,11 +168,12 @@ void loop() {
     flightController.update(dt);
     t_fc = micros();
 
-     // telemetry.update(); // send telemetry periodically
+     telemetry.update(); // send telemetry periodically
 
     // --- Calculate timings ---
-    uint32_t dur_sensors = t_sensors - t_start;
-    uint32_t dur_com     = t_com - t_sensors;
+    
+    uint32_t dur_com     = t_com - t_start;
+    uint32_t dur_sensors = t_sensors - t_com;
     uint32_t dur_fc      = t_fc - t_com;
     uint32_t dur_total   = t_fc - t_start;
 
@@ -181,5 +185,5 @@ void loop() {
         last_dbg = millis();
     }
 
-    delay(5); // maintain sensor update rate
+    delay(6); // maintain sensor update rate
 }
