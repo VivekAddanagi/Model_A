@@ -241,8 +241,8 @@ bool CC2500Receiver::getLatestControlData(int8_t& yaw, int8_t& pitch, int8_t& ro
     video    = _packet[11];
 
     
-    Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
-                  yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
+   // Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%d MODE=%d ARM=%d TO=%d FS=%d PH=%d VID=%d\n",
+               //   yaw, pitch, roll, throttle, mode, armed, takeoff, failsafe, photo, video);
     
 
     return true;
