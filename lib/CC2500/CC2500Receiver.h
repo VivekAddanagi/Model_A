@@ -110,7 +110,8 @@ private:
     void _writeRegister(uint8_t addr, uint8_t value);
     void _configureRadio();
     void _loadPATable();
-    bool _readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out);
+    bool _readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out ,
+                              int8_t& rssi_dbm_out, uint8_t& lqi_out);
     bool _verifyPacket(const uint8_t* data, uint8_t len);
     bool _verifyPacket(const uint8_t* data, uint8_t len, bool crcOk);
     void _processStatusBytes(uint8_t rssiByte, uint8_t lqiByte, int8_t& rssi_dBm, uint8_t& lqi, bool& crcOk);
