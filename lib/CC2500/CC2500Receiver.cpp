@@ -270,20 +270,10 @@ uint8_t CC2500Receiver::_readMARCState() {
 
 
 bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out) {
-    // Wait for full packet
-    unsigned long t0 = millis();
-    uint8_t rxBytes = 0;
+    // Check how many bytes are in FIFO
+    uint8_t rxBytes = _readRegister(0x3B) & 0x7F;
+    if (rxBytes == 0) return false;
 
-    // ⏱️ Use configurable timeout
-    while (millis() - t0 < CC2500_RX_TIMEOUT) {
-        rxBytes = _readRegister(0x3B) & 0x7F;
-        if (rxBytes >= CC2500_PACKET_SIZE) break;
-        delay(1);
-    }
-
-    if (rxBytes < CC2500_PACKET_SIZE) return false;
-
-    // Read exactly one packet
     SPI.beginTransaction(SPISettings(CC2500_SPI_SPEED, MSBFIRST, CC2500_SPI_MODE));
     digitalWrite(_cs, LOW);
     if (!_waitForChipReady()) {
@@ -293,22 +283,35 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out)
     }
 
     SPI.transfer(RX_FIFO_BURST);
-    for (uint8_t i = 0; i < CC2500_PACKET_SIZE; ++i) {
+
+    // First byte is packet length
+    uint8_t pktLen = SPI.transfer(0x00);
+    if (pktLen > 0xFF) { // sanity check
+        digitalWrite(_cs, HIGH);
+        SPI.endTransaction();
+        return false;
+    }
+
+    buffer[0] = pktLen; // store length byte
+    for (uint8_t i = 1; i <= pktLen; i++) {
         buffer[i] = SPI.transfer(0x00);
     }
+
+    // Read status bytes
+    uint8_t rssi = SPI.transfer(0x00);
+    uint8_t lqi_crc = SPI.transfer(0x00);
     digitalWrite(_cs, HIGH);
     SPI.endTransaction();
 
-    // Process RSSI and LQI
-    uint8_t rssi     = buffer[11];
-    uint8_t lqi_crc  = buffer[12];
+    // Process status
     int8_t rssi_dbm;
     uint8_t lqi;
     _processStatusBytes(rssi, lqi_crc, rssi_dbm, lqi, crcOk_out);
 
-    len = CC2500_PACKET_SIZE;
-    return true;   // 🔹 no flush here (handled by caller)
+    len = pktLen + 1; // include length byte in reported size
+    return true;
 }
+
 
 
 bool CC2500Receiver::receivePacket() {
@@ -363,21 +366,21 @@ bool CC2500Receiver::receivePacket() {
     anyPacketReceived = true;
 
     // Extract payload
-    int8_t yaw   = (int8_t)_packet[1];
-    int8_t pitch = (int8_t)_packet[2];
-    int8_t roll  = (int8_t)_packet[3];
-    uint8_t thr  = _packet[4];
-    uint8_t mode = _packet[5];
-    bool arm     = _packet[6];
-    bool to      = _packet[7];
-    bool fs      = _packet[8];
-    bool ph      = _packet[9];
-    bool vid     = _packet[10];
+    int8_t yaw   = (int8_t)_packet[2];
+    int8_t pitch = (int8_t)_packet[3];
+    int8_t roll  = (int8_t)_packet[4];
+    uint8_t thr  = _packet[5];
+    uint8_t mode = _packet[6];
+    bool arm     = _packet[7];
+    bool to      = _packet[8];
+    bool fs      = _packet[9];
+    bool ph      = _packet[10];
+    bool vid     = _packet[11];
 
   // Status bytes
 int8_t rssi_dbm;
 uint8_t lqi;
-_processStatusBytes(_packet[11], _packet[12], rssi_dbm, lqi, crcOk);
+_processStatusBytes(_packet[12], _packet[13], rssi_dbm, lqi, crcOk);
 
 // Store last RSSI (for external modules)
 _lastRssiDbm = rssi_dbm;
@@ -410,14 +413,14 @@ rssiCount++;
         lqiSum = 0;
         rssiCount = 0;
 
-        /*
+        
         // Optional detailed packet print
         Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
                       "| RSSI=%ddBm LQI=%u Δt=%lu ms | Loss=%lu/%lu (%.1f%%)\n",
                       yaw, pitch, roll, thr, mode, arm, to, fs, ph, vid,
                       rssi_dbm, lqi, gap,
                       _lostPackets, _expectedPackets, lossRate);
-        */
+        
     }
 
     // Flush FIFO only if stale data detected
@@ -444,18 +447,13 @@ bool CC2500Receiver::_isFifoStale() {
 
 
 bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk) {
-    if (!crcOk || len != CC2500_PACKET_SIZE || data[0] != CC2500_START_BYTE) {
-        // Minimal debug: failures are counted, not printed per packet
-        /*
-        Serial.printf("[VERIFY DEBUG] Len=%u, CRC_OK=%d, StartByte=0x%02X\n", len, crcOk, data[0]);
-        Serial.print("[VERIFY DATA] ");
-        for (int i = 0; i < len; i++) {
-            Serial.printf("0x%02X ", data[i]);
-        }
-        Serial.println();
-        */
-        return false;
-    }
+    if (!crcOk) return false;
+
+    uint8_t pktLen = data[0]; // first byte is length
+   // if (len != pktLen + 1) return false; // mismatch
+   if (len < pktLen + 1) return false;  // must have enough bytes
+   if (data[1] != CC2500_START_BYTE) return false; // check start byte
+
     return true;
 }
 
@@ -467,9 +465,9 @@ void CC2500Receiver::_configureRadio() {
     _writeRegister(0x03, 0x07);
     _writeRegister(0x04, 0xD3);
     _writeRegister(0x05, 0x91);
-    _writeRegister(0x06, CC2500_DATA_BYTES);
+    _writeRegister(0x06, 0xFF);
     _writeRegister(0x07, 0x04);
-    _writeRegister(0x08, 0x44);
+    _writeRegister(0x08, 0x45);
     _writeRegister(0x0A, 0x07);
     _writeRegister(0x0B, 0x06);
     _writeRegister(0x0C, 0x00);

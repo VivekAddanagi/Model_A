@@ -48,9 +48,11 @@ while (!Serial && (millis() - t0) < 200) {
     delay(10); // wait up to 2 seconds for serial, then continue
 }
 
-   // delay(3000);
+ comManager.begin();
 
-   
+    delay(3000);
+
+   /*
     // 🔹 Measure setup start time
     unsigned long setup_start = millis();
    
@@ -126,11 +128,16 @@ while (!Serial && (millis() - t0) < 200) {
     // 🔹 Measure and print setup time
     unsigned long setup_end = millis();
     Serial.printf("[SETUP] Completed successfully in %lu ms\n", setup_end - setup_start);
+    */
    
 }
 
 
 void loop() {
+
+    comManager.update();
+
+    /*
 
     static uint32_t last_ms = millis();
     uint32_t now = millis();
@@ -168,7 +175,7 @@ void loop() {
     flightController.update(dt);
     t_fc = micros();
 
-     telemetry.update(); // send telemetry periodically
+    // telemetry.update(); // send telemetry periodically
 
     // --- Calculate timings ---
     
@@ -184,6 +191,7 @@ void loop() {
                       dur_sensors, dur_com, dur_fc, dur_total);
         last_dbg = millis();
     }
+        */
 
     delay(6); // maintain sensor update rate
 }
