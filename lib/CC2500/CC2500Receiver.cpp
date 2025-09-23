@@ -272,17 +272,17 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out 
      int8_t& rssi_dbm_out, uint8_t& lqi_out) {
     uint8_t rxBytes = _readRegister(0x3B) & 0x7F;
     if (rxBytes == 0) {
-        Serial.println("[DEBUG RXFIFO] No bytes available in RX FIFO");
+       // Serial.println("[DEBUG RXFIFO] No bytes available in RX FIFO");
         return false;
     }
-    Serial.printf("[DEBUG RXFIFO] RXBYTES=%u\n", rxBytes);
+   // Serial.printf("[DEBUG RXFIFO] RXBYTES=%u\n", rxBytes);
 
     SPI.beginTransaction(SPISettings(CC2500_SPI_SPEED, MSBFIRST, CC2500_SPI_MODE));
     digitalWrite(_cs, LOW);
     if (!_waitForChipReady()) {
         digitalWrite(_cs, HIGH);
         SPI.endTransaction();
-        Serial.println("[DEBUG RXFIFO] Chip not ready");
+      //  Serial.println("[DEBUG RXFIFO] Chip not ready");
         return false;
     }
 
@@ -290,13 +290,13 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out 
 
     // First byte = payload length
     uint8_t pktLen = SPI.transfer(0x00);
-    Serial.printf("[DEBUG RXFIFO] Length byte received=%u\n", pktLen);
+   // Serial.printf("[DEBUG RXFIFO] Length byte received=%u\n", pktLen);
 
     // ✅ Safety check against buffer overflow (payload-based)
     const uint8_t MAX_PAYLOAD = sizeof(_packet) - 1; // exclude length byte
     if (pktLen == 0 || pktLen > MAX_PAYLOAD) {
-        Serial.printf("[ERROR RXFIFO] Invalid pktLen=%u (max=%u), flushing FIFO!\n",
-                      pktLen, MAX_PAYLOAD);
+       // Serial.printf("[ERROR RXFIFO] Invalid pktLen=%u (max=%u), flushing FIFO!\n",
+                     // pktLen, MAX_PAYLOAD);
         digitalWrite(_cs, HIGH);
         SPI.endTransaction();
         _strobeCommand(SIDLE);
@@ -307,7 +307,7 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out 
 
     // Store length byte
     buffer[0] = pktLen; 
-    Serial.printf("[DEBUG RXFIFO] Reading %u payload bytes...\n", pktLen);
+   // Serial.printf("[DEBUG RXFIFO] Reading %u payload bytes...\n", pktLen);
 
     // Read payload
     for (uint8_t i = 1; i <= pktLen; i++) {
@@ -321,22 +321,22 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out 
     SPI.endTransaction();
 
     // Debug print entire packet
-    Serial.print("[DEBUG RXFIFO] Raw packet: ");
-    for (uint8_t i = 0; i <= pktLen; i++) {
-        Serial.printf("0x%02X ", buffer[i]);
-    }
-    Serial.printf("| RSSI=0x%02X LQI/CRC=0x%02X\n", rssi, lqi_crc);
+   // Serial.print("[DEBUG RXFIFO] Raw packet: ");
+   // for (uint8_t i = 0; i <= pktLen; i++) {
+       // Serial.printf("0x%02X ", buffer[i]);
+ //   }
+   // Serial.printf("| RSSI=0x%02X LQI/CRC=0x%02X\n", rssi, lqi_crc);
 
   // Process status and pass up
 _processStatusBytes(rssi, lqi_crc, rssi_dbm_out, lqi_out, crcOk_out);
 
-Serial.printf("[DEBUG RXFIFO] RSSI=%d dBm LQI=%u CRC_OK=%d\n",
-              rssi_dbm_out, lqi_out, crcOk_out);
+// Serial.printf("[DEBUG RXFIFO] RSSI=%d dBm LQI=%u CRC_OK=%d\n",
+           //   rssi_dbm_out, lqi_out, crcOk_out);
 
 
     // Reported length = 1 (length byte) + payload
     len = pktLen + 1;
-    Serial.printf("[DEBUG RXFIFO] Final reported length=%u (len byte + payload)\n", len);
+  //  Serial.printf("[DEBUG RXFIFO] Final reported length=%u (len byte + payload)\n", len);
 
     return true;
 }
@@ -363,15 +363,15 @@ bool CC2500Receiver::receivePacket() {
    uint8_t lqi;
 
 if (!_readRXFIFO(_packet, len, crcOk, rssi_dbm, lqi)) {
-    Serial.println("[DEBUG RECEIVE] No packet read from FIFO");
+   // Serial.println("[DEBUG RECEIVE] No packet read from FIFO");
     return false;
 }
 
-    Serial.printf("[DEBUG RECEIVE] Packet length=%u, CRC=%d\n", len, crcOk);
+  //  Serial.printf("[DEBUG RECEIVE] Packet length=%u, CRC=%d\n", len, crcOk);
 
     if (!_verifyPacket(_packet, len, crcOk)) {
-        Serial.printf("[DEBUG RECEIVE] Packet verify failed (len=%u, crc=%d, start=0x%02X)\n",
-                      len, crcOk, _packet[1]);
+      //  Serial.printf("[DEBUG RECEIVE] Packet verify failed (len=%u, crc=%d, start=0x%02X)\n",
+                   //   len, crcOk, _packet[1]);
         return false; // invalid packet, skip
     }
 
@@ -441,13 +441,15 @@ rssiCount++;
         lqiSum = 0;
         rssiCount = 0;
 
-        
+        /*
         // Optional detailed packet print
         Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
                       "| RSSI=%ddBm LQI=%u Δt=%lu ms | Loss=%lu/%lu (%.1f%%)\n",
                       yaw, pitch, roll, thr, mode, arm, to, fs, ph, vid,
                       rssi_dbm, lqi, gap,
                       _lostPackets, _expectedPackets, lossRate);
+
+                      */
         
     }
    
@@ -471,27 +473,27 @@ bool CC2500Receiver::_isFifoStale() {
     uint8_t maxLen = _readRegister(0x06); // PKTLEN
     uint8_t allowedMax = maxLen + 1 + 2;
 
-    Serial.printf("[DEBUG FIFO] RXBYTES=%u (overflow=%d), allowedMax=%u\n",
-                  numBytes, overflow, allowedMax);
+   // Serial.printf("[DEBUG FIFO] RXBYTES=%u (overflow=%d), allowedMax=%u\n",
+                //  numBytes, overflow, allowedMax);
 
     return (overflow || (numBytes > allowedMax));
 }
 
 bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk) {
     if (!crcOk) {
-        Serial.println("[DEBUG VERIFY] CRC failed");
+      //  Serial.println("[DEBUG VERIFY] CRC failed");
         return false;
     }
 
     uint8_t pktLen = data[0]; // first byte is length
     if (len < pktLen + 1) {
-        Serial.printf("[DEBUG VERIFY] Length mismatch (len=%u, pktLen=%u)\n", len, pktLen);
+      //  Serial.printf("[DEBUG VERIFY] Length mismatch (len=%u, pktLen=%u)\n", len, pktLen);
         return false;
     }
 
     // Optional start byte check
      if (data[1] != CC2500_START_BYTE) {
-        Serial.printf("[DEBUG VERIFY] Start byte mismatch (got=0x%02X)\n", data[1]);
+      //  Serial.printf("[DEBUG VERIFY] Start byte mismatch (got=0x%02X)\n", data[1]);
          return false;
      }
 
