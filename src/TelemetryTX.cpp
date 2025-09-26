@@ -76,11 +76,37 @@ uint8_t TelemetryTx::calcChecksum(const uint8_t* data, uint8_t len) {
 }
 
 void TelemetryTx::sendDummyTelemetry() {
+    static unsigned long lastSuccessTime = 0; // store last successful send
+    unsigned long now = millis();
+
     uint8_t payload[19] = {0};
     payload[0] = _packetCounter++;
 
-    // ... (populate payload as you already do)
+    int16_t alt_cm = (int16_t)(_sensors->getAltitudeMeters() * 100);
+    payload[1] = alt_cm & 0xFF;
+    payload[2] = (alt_cm >> 8) & 0xFF;
 
+    // Gyroscope
+    int16_t gx = (int16_t)(_sensors->getGyroX() * 100);
+    int16_t gy = (int16_t)(_sensors->getGyroY() * 100);
+    int16_t gz = (int16_t)(_sensors->getGyroZ() * 100);
+    payload[3] = gx & 0xFF; payload[4] = gx >> 8;
+    payload[5] = gy & 0xFF; payload[6] = gy >> 8;
+    payload[7] = gz & 0xFF; payload[8] = gz >> 8;
+
+    // Accelerometer
+    int16_t ax = (int16_t)(_sensors->getAccelX() * 1000);
+    int16_t ay = (int16_t)(_sensors->getAccelY() * 1000);
+    int16_t az = (int16_t)(_sensors->getAccelZ() * 1000);
+    payload[9]  = ax & 0xFF; payload[10] = ax >> 8;
+    payload[11] = ay & 0xFF; payload[12] = ay >> 8;
+    payload[13] = az & 0xFF; payload[14] = az >> 8;
+
+    // Errors, battery, RSSI
+    uint8_t errors = _com->failsafe ? 0x01 : 0x00;
+    payload[15] = errors;
+    payload[16] = 0; // battery %
+    payload[17] = (uint8_t)_com->getRSSI();
     payload[18] = calcChecksum(payload, 18);
 
     uint8_t packetLength = sizeof(payload);
@@ -93,6 +119,14 @@ void TelemetryTx::sendDummyTelemetry() {
 
     if (_com->sendTelemetryPacket(buf, packetLength + 1)) {
         Serial.println("[TelemetryTx] Dummy packet sent OK");
+
+        // --- Print time since last successful transmission ---
+        if (lastSuccessTime != 0) {
+            unsigned long dt = now - lastSuccessTime;
+            Serial.printf("[TelemetryTx] Time since last successful send: %lu ms\n", dt);
+        }
+        lastSuccessTime = now;
+
     } else {
         Serial.println("[TelemetryTx] ERROR sending dummy packet");
     }
