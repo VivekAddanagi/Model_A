@@ -48,9 +48,9 @@ while (!Serial && (millis() - t0) < 200) {
     delay(10); // wait up to 2 seconds for serial, then continue
 }
 
- comManager.begin();
- telemetry.begin();
- /*
+ //comManager.begin();
+ //telemetry.begin();
+ 
     delay(3000);
 
    
@@ -130,16 +130,16 @@ while (!Serial && (millis() - t0) < 200) {
     unsigned long setup_end = millis();
     Serial.printf("[SETUP] Completed successfully in %lu ms\n", setup_end - setup_start);
     
-   */
+   
 }
 
 
 void loop() {
 
-    telemetry.update(); // send telemetry periodically
+   // telemetry.update(); // send telemetry periodically
 
 
-    /*
+    
 
     static uint32_t last_ms = millis();
     uint32_t now = millis();
@@ -194,7 +194,7 @@ void loop() {
         last_dbg = millis();
     }
         
-    */
+    
 
     delay(6); // maintain sensor update rate
 }
