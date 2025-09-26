@@ -517,7 +517,7 @@ bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk)
 void CC2500Receiver::_configureRadio() {
    // Serial.println("[CC2500 CONFIG] Setting registers...");
    // _writeRegister(0x00, 0x06);
-    _writeRegister(0x02, 0x07);
+    _writeRegister(0x02, 0x06);
     _writeRegister(0x03, 0x07);
     _writeRegister(0x04, 0xD3);
     _writeRegister(0x05, 0x91);

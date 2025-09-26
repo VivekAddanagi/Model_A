@@ -9,6 +9,8 @@
 class TelemetryTx {
 public:
     TelemetryTx(ComManager* com, SensorManager* sensors);
+    // Add this declaration:
+    void sendDummyTelemetry();
 
     void begin();
     void update();
