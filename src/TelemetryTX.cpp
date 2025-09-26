@@ -61,10 +61,10 @@ void TelemetryTx::sendTelemetry() {
     memcpy(&buf[1], payload, packetLength);
 
     // --- DEBUG GDO0 before TX ---
-    Serial.printf("[TelemetryTx DEBUG] GDO0 before send: %d\n", digitalRead(CC2500_GDO0_PIN));
+   // Serial.printf("[TelemetryTx DEBUG] GDO0 before send: %d\n", digitalRead(CC2500_GDO0_PIN));
 
     if (_com->sendTelemetryPacket(buf, packetLength + 1)) {
-        Serial.println("[TelemetryTx] Packet sent OK");
+       // Serial.println("[TelemetryTx] Packet sent OK");
 
         // --- Print time since last successful transmission ---
         if (lastSuccessTime != 0) {
@@ -78,7 +78,7 @@ void TelemetryTx::sendTelemetry() {
     }
 
     // --- DEBUG GDO0 after TX ---
-    Serial.printf("[TelemetryTx DEBUG] GDO0 after send: %d\n", digitalRead(CC2500_GDO0_PIN));
+   // Serial.printf("[TelemetryTx DEBUG] GDO0 after send: %d\n", digitalRead(CC2500_GDO0_PIN));
 
     // Optional: dump packet bytes
     Serial.print("[TelemetryTx] Packet bytes: ");

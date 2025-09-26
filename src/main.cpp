@@ -133,14 +133,8 @@ while (!Serial && (millis() - t0) < 200) {
    
 }
 
-
 void loop() {
-
-   // telemetry.update(); // send telemetry periodically
-
-
-    
-
+      
     static uint32_t last_ms = millis();
     uint32_t now = millis();
     float dt = (now - last_ms) * 0.001f;
@@ -159,9 +153,7 @@ void loop() {
     sensorManager.update();
     t_sensors = micros();
 
-   
-
-    // Map RC input to flight controller setpoints if new data received
+       // Map RC input to flight controller setpoints if new data received
     if (comManager.hasNewData()) {
         flightController.roll_set  = map(comManager.roll,   -100, 100, -30, 30); // degrees
         flightController.pitch_set = map(comManager.pitch,  -100, 100, -30, 30); // degrees
@@ -171,7 +163,6 @@ void loop() {
 
     // enforce geofence — reads comManager RSSI and sensor altitude, may modify setpoints
     geofence.update(&comManager, &sensorManager, &flightController);
-
 
     // Update flight controller with dt
     flightController.update(dt);
@@ -193,8 +184,6 @@ void loop() {
                       dur_sensors, dur_com, dur_fc, dur_total);
         last_dbg = millis();
     }
-        
-    
-
+          
     delay(6); // maintain sensor update rate
 }

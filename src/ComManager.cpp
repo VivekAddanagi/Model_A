@@ -58,7 +58,7 @@ bool ComManager::sendTelemetryPacket(const uint8_t* data, uint8_t len) {
         return false;
     }
 
-    Serial.printf("[ComManager DEBUG] TX len=%u\n", len);
+   // Serial.printf("[ComManager DEBUG] TX len=%u\n", len);
 
     // --- Enter IDLE ---
     _cc2500._strobeCommand(0x36); // SIDLE
@@ -68,7 +68,7 @@ bool ComManager::sendTelemetryPacket(const uint8_t* data, uint8_t len) {
         Serial.printf("[ComManager ERROR] SIDLE failed, MARCSTATE=0x%02X\n", marcState);
         return false;
     }
-    Serial.printf("[ComManager DEBUG] After SIDLE, MARCSTATE=0x%02X\n", marcState);
+   // Serial.printf("[ComManager DEBUG] After SIDLE, MARCSTATE=0x%02X\n", marcState);
 
     // --- Flush TX FIFO ---
     _cc2500._strobeCommand(0x3B); // SFTX
@@ -84,7 +84,7 @@ bool ComManager::sendTelemetryPacket(const uint8_t* data, uint8_t len) {
 
     // Verify TX FIFO count
     uint8_t txBytes = _cc2500._readRegister(0x3A) & 0x7F; // TXBYTES
-    Serial.printf("[ComManager DEBUG] TX FIFO now has %u bytes\n", txBytes);
+   // Serial.printf("[ComManager DEBUG] TX FIFO now has %u bytes\n", txBytes);
     if (txBytes != len) {
         Serial.printf("[ComManager ERROR] TX FIFO mismatch: expected=%u got=%u\n", len, txBytes);
         return false;
@@ -105,13 +105,13 @@ bool ComManager::sendTelemetryPacket(const uint8_t* data, uint8_t len) {
         Serial.printf("[ComManager ERROR] Unexpected MARCSTATE after STX=0x%02X\n", marcState);
         return false;
     }
-    Serial.printf("[ComManager DEBUG] After STX, MARCSTATE=0x%02X\n", marcState);
+   // Serial.printf("[ComManager DEBUG] After STX, MARCSTATE=0x%02X\n", marcState);
 
     // --- Wait for GDO0 HIGH (sync word sent) ---
     unsigned long start = micros();
     while (digitalRead(CC2500_GDO0_PIN) == LOW && (micros() - start) < 10000);
     if (digitalRead(CC2500_GDO0_PIN) == HIGH) {
-        Serial.printf("[ComManager DEBUG] GDO0 went HIGH after %lu us\n", micros() - start);
+      //  Serial.printf("[ComManager DEBUG] GDO0 went HIGH after %lu us\n", micros() - start);
     } else {
         Serial.println("[ComManager ERROR] Timeout waiting for GDO0 HIGH");
         return false;
@@ -121,7 +121,7 @@ bool ComManager::sendTelemetryPacket(const uint8_t* data, uint8_t len) {
     start = micros();
     while (digitalRead(CC2500_GDO0_PIN) == HIGH && (micros() - start) < 50000);
     if (digitalRead(CC2500_GDO0_PIN) == LOW) {
-        Serial.printf("[ComManager DEBUG] GDO0 went LOW after %lu us\n", micros() - start);
+       // Serial.printf("[ComManager DEBUG] GDO0 went LOW after %lu us\n", micros() - start);
     } else {
         Serial.println("[ComManager ERROR] Timeout waiting for GDO0 LOW");
         return false;
@@ -147,7 +147,7 @@ bool ComManager::sendTelemetryPacket(const uint8_t* data, uint8_t len) {
         return false;
     }
 
-    Serial.printf("[ComManager DEBUG] After SRX, MARCSTATE=0x%02X\n", marcState);
+   // Serial.printf("[ComManager DEBUG] After SRX, MARCSTATE=0x%02X\n", marcState);
 
     return true;
 }
