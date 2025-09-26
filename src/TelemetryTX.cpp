@@ -13,12 +13,15 @@ void TelemetryTx::update() {
 
     if (now - _lastSend >= SEND_INTERVAL_MS) {
         _lastSend = now;
-       // sendTelemetry();
-         sendDummyTelemetry();
+        sendTelemetry();
+        // sendDummyTelemetry();
     }
 }
-/*
+
 void TelemetryTx::sendTelemetry() {
+    static unsigned long lastSuccessTime = 0; // track last successful send
+    unsigned long now = millis();
+
     uint8_t payload[19] = {0}; // payload excluding length byte
     payload[0] = _packetCounter++;  // counter
 
@@ -57,15 +60,35 @@ void TelemetryTx::sendTelemetry() {
     buf[0] = packetLength; // length byte for variable-length mode
     memcpy(&buf[1], payload, packetLength);
 
-    // Send to CC2500
+    // --- DEBUG GDO0 before TX ---
+    Serial.printf("[TelemetryTx DEBUG] GDO0 before send: %d\n", digitalRead(CC2500_GDO0_PIN));
+
     if (_com->sendTelemetryPacket(buf, packetLength + 1)) {
-        Serial.println("[TelemetryTx] Packet sent OK (variable length)");
+        Serial.println("[TelemetryTx] Packet sent OK");
+
+        // --- Print time since last successful transmission ---
+        if (lastSuccessTime != 0) {
+            unsigned long dt = now - lastSuccessTime;
+            Serial.printf("[TelemetryTx] Time since last successful send: %lu ms\n", dt);
+        }
+        lastSuccessTime = now;
+
     } else {
         Serial.println("[TelemetryTx] ERROR sending packet");
     }
+
+    // --- DEBUG GDO0 after TX ---
+    Serial.printf("[TelemetryTx DEBUG] GDO0 after send: %d\n", digitalRead(CC2500_GDO0_PIN));
+
+    // Optional: dump packet bytes
+    Serial.print("[TelemetryTx] Packet bytes: ");
+    for (uint8_t i = 0; i < packetLength + 1; i++) {
+        Serial.printf("%02X ", buf[i]);
+    }
+    Serial.println();
 }
 
-*/
+
 
 uint8_t TelemetryTx::calcChecksum(const uint8_t* data, uint8_t len) {
     uint8_t chk = 0;
@@ -75,6 +98,7 @@ uint8_t TelemetryTx::calcChecksum(const uint8_t* data, uint8_t len) {
     return chk;
 }
 
+/*
 void TelemetryTx::sendDummyTelemetry() {
     static unsigned long lastSuccessTime = 0; // store last successful send
     unsigned long now = millis();
@@ -141,3 +165,4 @@ void TelemetryTx::sendDummyTelemetry() {
     }
     Serial.println();
 }
+*/
