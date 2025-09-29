@@ -6,9 +6,12 @@
 #include "ComManager.h"
 #include "CC2500Receiver.h"  // we’ll reuse same radio driver
 
+
+class FlightController;   // <-- forward declaration
+
 class TelemetryTx {
 public:
-    TelemetryTx(ComManager* com, SensorManager* sensors);
+    TelemetryTx(ComManager* com, SensorManager* sensors, FlightController* fc);
     // Add this declaration:
     void sendDummyTelemetry();
 
@@ -18,6 +21,7 @@ public:
 private:
     ComManager* _com;
     SensorManager* _sensors;
+    FlightController* _fc;   // <-- add this
     uint8_t _packetCounter = 0;
     unsigned long _lastSend = 0;
 

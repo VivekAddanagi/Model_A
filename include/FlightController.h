@@ -3,6 +3,7 @@
 #include "ComManager.h"
 #include <Arduino.h>
 
+
 // Quad motor pins (assigned as per your hardware)
 #define MOTOR_PIN_1 4    // Front Left - CCW
 #define MOTOR_PIN_2 2    // Front Right - CW
@@ -31,6 +32,7 @@ public:
     float pitch_set = 0.0f;
     float yaw_set   = 0.0f;
     float alt_set   = 1.5f; // meters
+    float _lastMotorDuty[4] = {0, 0, 0, 0}; // store last motor duty %
 
 private:
     SensorManager* sensor;   // <-- pointer to SensorManager

@@ -80,6 +80,12 @@ void FlightController::writeMotors(float m1, float m2, float m3, float m4) {
     mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_A, d3);
     mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_1, MCPWM_OPR_B, d4);
 
+    _lastMotorDuty[0] = d1;
+_lastMotorDuty[1] = d2;
+_lastMotorDuty[2] = d3;
+_lastMotorDuty[3] = d4;
+
+
     static unsigned long last_motor_dbg = 0;
     if (millis() - last_motor_dbg > 200) {
         Serial.printf("[MOTORS] M1: %.1f%% | M2: %.1f%% | M3: %.1f%% | M4: %.1f%%\n", d1, d2, d3, d4);

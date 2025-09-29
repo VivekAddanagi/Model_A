@@ -31,7 +31,8 @@ ComManager comManager;
 SensorManager sensorManager;
 FlightController flightController(&sensorManager, &comManager);
 
-TelemetryTx telemetry(&comManager, &sensorManager);
+TelemetryTx telemetry(&comManager, &sensorManager, &flightController);
+
 
 // Prototypes
 FlightMode select_mode();
