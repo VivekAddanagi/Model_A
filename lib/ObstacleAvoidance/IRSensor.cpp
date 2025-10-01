@@ -76,3 +76,14 @@ void IRSensor::handleAvoidance() {
         Serial.println("Obstacle Behind: Stop reverse motion");
     }
 }
+
+
+uint8_t IRSensor::getObstacleFlags() const {
+    uint8_t flags = 0;
+    for (int dir = 0; dir < NUM_DIRECTIONS; dir++) {
+        if (isNear((Direction)dir)) {   // uses default dangerThreshold
+            flags |= (1 << dir);
+        }
+    }
+    return flags;
+}

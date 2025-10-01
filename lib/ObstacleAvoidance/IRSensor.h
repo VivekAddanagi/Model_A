@@ -29,6 +29,7 @@ public:
     // Threshold config API
     void setThreshold(int threshold);
     int  getThreshold() const;
+    uint8_t getObstacleFlags() const;  // default threshold
 
 private:
     int readings[4] = {0,0,0,0};

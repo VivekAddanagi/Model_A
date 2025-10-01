@@ -1,5 +1,9 @@
 #include "TelemetryTx.h"
 #include "FlightController.h"
+#include "ComManager.h"
+#include "DroneLEDController.h"
+
+extern DroneState currentState;
 
 
 // Status codes
@@ -9,6 +13,11 @@
 #define CODE_CALIBRATION   4   // Warning
 #define CODE_INFO_STARTUP  5   // Info
 #define CODE_INFO_LANDED   6   // Info
+#define CODE_SENSOR_FAIL   7   // Error
+#define CODE_SENSOR_OK     8   // Info
+#define CODE_CC2500_FAIL   9   // Error
+#define CODE_CC2500_OK     10  // Info
+
 
 // Severity levels
 #define SEVERITY_INFO      0
@@ -16,8 +25,10 @@
 #define SEVERITY_CRITICAL  2
 
 
-TelemetryTx::TelemetryTx(ComManager* com, SensorManager* sensors, FlightController* fc)
-    : _com(com), _sensors(sensors), _fc(fc) {}
+
+
+TelemetryTx::TelemetryTx(ComManager* com, SensorManager* sensors, FlightController* fc, IRSensor* ir)
+    : _com(com), _sensors(sensors), _fc(fc), _irSensor(ir) {}
 
 
 void TelemetryTx::begin() {
@@ -34,19 +45,19 @@ void TelemetryTx::update() {
         // sendDummyTelemetry();
     }
 }
+
 void TelemetryTx::sendTelemetry() {
-    static unsigned long lastSuccessTime = 0; // track last successful send
+    static unsigned long lastSuccessTime = 0;
     unsigned long now = millis();
 
-    uint8_t payload[34] = {0}; // increased payload size for roll/pitch/yaw + timestamp + motors
-    payload[0] = _packetCounter++;  // counter
+    uint8_t payload[42] = {0}; // increased payload to include velocities
+    payload[0] = _packetCounter++;
 
-    // Altitude (m → cm)
+    // --- Existing fields ---
     int16_t alt_cm = (int16_t)(_sensors->getAltitudeMeters() * 100);
     payload[1] = alt_cm & 0xFF;
     payload[2] = (alt_cm >> 8) & 0xFF;
 
-    // Gyroscope
     int16_t gx = (int16_t)(_sensors->getGyroX() * 100);
     int16_t gy = (int16_t)(_sensors->getGyroY() * 100);
     int16_t gz = (int16_t)(_sensors->getGyroZ() * 100);
@@ -54,7 +65,6 @@ void TelemetryTx::sendTelemetry() {
     payload[5] = gy & 0xFF; payload[6] = gy >> 8;
     payload[7] = gz & 0xFF; payload[8] = gz >> 8;
 
-    // Accelerometer
     int16_t ax = (int16_t)(_sensors->getAccelX() * 1000);
     int16_t ay = (int16_t)(_sensors->getAccelY() * 1000);
     int16_t az = (int16_t)(_sensors->getAccelZ() * 1000);
@@ -62,7 +72,6 @@ void TelemetryTx::sendTelemetry() {
     payload[11] = ay & 0xFF; payload[12] = ay >> 8;
     payload[13] = az & 0xFF; payload[14] = az >> 8;
 
-    // Euler angles (roll, pitch, yaw)
     int16_t roll  = (int16_t)(estimated_roll  * 100);
     int16_t pitch = (int16_t)(estimated_pitch * 100);
     int16_t yaw   = (int16_t)(estimated_yaw   * 100);
@@ -70,53 +79,53 @@ void TelemetryTx::sendTelemetry() {
     payload[17] = pitch & 0xFF;   payload[18] = pitch >> 8;
     payload[19] = yaw & 0xFF;     payload[20] = yaw >> 8;
 
-    // Status (error/warning/info)
-    uint8_t statusCode = 0;
+    // --- Status ---
+    uint8_t statusCode = CODE_INFO_STARTUP;
     uint8_t severity = SEVERITY_INFO;
-    if (_com->failsafe) {
-        statusCode = CODE_MOTOR_FAIL;
-        severity = SEVERITY_CRITICAL;
-    } else {
-        statusCode = CODE_INFO_STARTUP;
-        severity = SEVERITY_INFO;
-    }
+    if (!_com->isHealthy()) { statusCode = CODE_CC2500_FAIL; severity = SEVERITY_CRITICAL; }
+    else if (_com->failsafe) { statusCode = CODE_MOTOR_FAIL; severity = SEVERITY_CRITICAL; }
+    else if (_sensors->getStatus() == SENSOR_STATUS_ERROR) { statusCode = CODE_SENSOR_FAIL; severity = SEVERITY_CRITICAL; }
+    else if (_sensors->getStatus() == SENSOR_STATUS_OK) { statusCode = CODE_SENSOR_OK; severity = SEVERITY_INFO; }
     payload[21] = statusCode;
     payload[22] = severity;
 
-    // Battery % placeholder
-    payload[23] = 0;
+    payload[23] = (uint8_t)currentState;
+    payload[24] = 0; // battery placeholder
+    payload[25] = _irSensor->getObstacleFlags();
+    payload[26] = (uint8_t)_com->getRSSI();
 
-    // RSSI
-    payload[24] = (uint8_t)_com->getRSSI();
-
-    // Timestamp (milliseconds, 4 bytes)
     uint32_t t_ms = now;
-    payload[25] = t_ms & 0xFF;
-    payload[26] = (t_ms >> 8) & 0xFF;
-    payload[27] = (t_ms >> 16) & 0xFF;
-    payload[28] = (t_ms >> 24) & 0xFF;
+    payload[27] = t_ms & 0xFF;
+    payload[28] = (t_ms >> 8) & 0xFF;
+    payload[29] = (t_ms >> 16) & 0xFF;
+    payload[30] = (t_ms >> 24) & 0xFF;
 
-    // --- Add motor duty cycles (scaled 0–100%) ---
-    payload[29] = (uint8_t)_fc->_lastMotorDuty[0]; // M1 %
-    payload[30] = (uint8_t)_fc->_lastMotorDuty[1]; // M2 %
-    payload[31] = (uint8_t)_fc->_lastMotorDuty[2]; // M3 %
-    payload[32] = (uint8_t)_fc->_lastMotorDuty[3]; // M4 %
+    payload[31] = (uint8_t)_fc->_lastMotorDuty[0];
+    payload[32] = (uint8_t)_fc->_lastMotorDuty[1];
+    payload[33] = (uint8_t)_fc->_lastMotorDuty[2];
+    payload[34] = (uint8_t)_fc->_lastMotorDuty[3];
+
+    // --- Add velocities (scaled to cm/s) ---
+    int16_t vx_cm = (int16_t)(_sensors->getVelX() * 100.0f);
+    int16_t vy_cm = (int16_t)(_sensors->getVelY() * 100.0f);
+    int16_t vz_cm = (int16_t)(_sensors->getVelZ() * 100.0f);
+    payload[35] = vx_cm & 0xFF; payload[36] = vx_cm >> 8;
+    payload[37] = vy_cm & 0xFF; payload[38] = vy_cm >> 8;
+    payload[39] = vz_cm & 0xFF; payload[40] = vz_cm >> 8;
 
     // Checksum
-    payload[33] = calcChecksum(payload, 33); // last byte = checksum
+    payload[41] = calcChecksum(payload, 41);
 
-    uint8_t packetLength = 34;
-    uint8_t buf[35];
-    buf[0] = packetLength; // length byte
-    memcpy(&buf[1], payload, packetLength);
-
-    if (_com->sendTelemetryPacket(buf, packetLength + 1)) {
+    // Send packet
+    uint8_t buf[42];
+    buf[0] = sizeof(payload);
+    memcpy(&buf[1], payload, sizeof(payload));
+    if (_com->sendTelemetryPacket(buf, sizeof(buf))) {
         lastSuccessTime = now;
     } else {
         Serial.println("[TelemetryTx] ERROR sending packet");
     }
 }
-
 
 uint8_t TelemetryTx::calcChecksum(const uint8_t* data, uint8_t len) {
     uint8_t chk = 0;

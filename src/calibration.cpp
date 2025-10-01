@@ -112,13 +112,13 @@ static void print_calibration_data() {
 
 // ===================== Main Calibration Flow =====================
 void run_calibration_sequence_startup() {
-    Serial.println(F("[CALIB] Performing fresh calibration before flight..."));
+   // Serial.println(F("[CALIB] Performing fresh calibration before flight..."));
   //  wait_for_user_confirmation();
 
    
     // Gyro calibration
     if (bmi323_quick_gyro_calibrate(&gyro_cal))
-        Serial.println(F("[BMI323] Gyro calibrated."));
+       Serial.println(F("[BMI323] Gyro calibrated."));
     else
         Serial.println(F("[ERROR] Gyro calibration failed."));
 
@@ -149,6 +149,6 @@ else
 
     // Show results
     print_calibration_data();
-    Serial.println(F("[CAL] Calibration sequence completed."));
+   // Serial.println(F("[CAL] Calibration sequence completed."));
 }
 

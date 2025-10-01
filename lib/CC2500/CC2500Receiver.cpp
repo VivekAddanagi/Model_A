@@ -521,7 +521,7 @@ void CC2500Receiver::_configureRadio() {
     _writeRegister(0x03, 0x07);
     _writeRegister(0x04, 0xD3);
     _writeRegister(0x05, 0x91);
-    _writeRegister(0x06, 25);
+    _writeRegister(0x06, 50);
     _writeRegister(0x07, 0x04);
     _writeRegister(0x08, 0x45);
     _writeRegister(0x0A, 0x07);

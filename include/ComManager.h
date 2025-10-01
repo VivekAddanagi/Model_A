@@ -22,10 +22,12 @@ int8_t getRSSI() const;
 
     // Telemetry transmission helper
      bool sendTelemetryPacket(const uint8_t* data, uint8_t len);
+     bool isHealthy() const { return _healthy; }
 
 private:
     CC2500Receiver _cc2500;
     bool _newData;
+    bool _healthy = false;  // ✅ new flag
 };
 
 #endif // COM_MANAGER_H

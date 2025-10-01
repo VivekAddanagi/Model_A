@@ -8,6 +8,22 @@
 #include <vector>
 #include <algorithm>
 
+// near the top of SensorManager.cpp with other globals
+extern float estimated_roll;
+extern float estimated_pitch;
+extern float estimated_yaw; // required for full rotation from body -> earth
+
+// exported velocity state (m/s)
+float vel_x = 0.0f;
+float vel_y = 0.0f;
+float vel_z = 0.0f; // you'll already be setting vel_z from EKF
+
+// Add simple getters (if you prefer them as member functions, add declarations in SensorManager.h)
+float SensorManager::getVelX() const { return vel_x; }
+float SensorManager::getVelY() const { return vel_y; }
+float SensorManager::getVelZ() const { return vel_z; }
+
+
 
 // If these live in other translation units, keep them extern here:
 extern bmp390_fifo_data_t fifo_data[BMP390_FIFO_BUFFER_SIZE];
@@ -19,51 +35,86 @@ extern float pressure_offset;
 // Latest altitude for EKF
 float latest_altitude_m = 0.0f;
 
+void apply_bmi323_mode(FlightMode mode);
+void apply_bmp390_mode(FlightMode mode);
+void run_calibration_sequence_startup();
+
 // -------------------- Constructor --------------------
 SensorManager::SensorManager() {}
 
+const char* SensorManager::getStatusString() const {
+    switch (status) {
+        case SENSOR_STATUS_OK:    return "OK";
+        case SENSOR_STATUS_ERROR: return "ERROR";
+        default:                  return "UNKNOWN";
+    }
+}
+
+
 // -------------------- Begin / init --------------------
-bool SensorManager::begin(float sea_level_pressure) {
-    Serial.println("[SENSOR] Initializing BMI323...");
+bool SensorManager::begin(float sea_level_pressure, FlightMode mode) {
+   // Serial.println("[SENSOR] === SensorManager Begin Sequence ===");
+
+    bool bmi_ok = true;
+    bool bmp_ok = true;
+
+    // 1️⃣ Initialize BMI323
+    //Serial.println("[SENSOR] Initializing BMI323...");
     if (!bmi323_init()) {
         Serial.println("[ERROR] BMI323 init failed.");
-        while (1) { /* halt */ }
-    }
-
-    delay(200);
-
-    if (!bmi323_run_selftest()) {
+        bmi_ok = false;
+    } else if (!bmi323_run_selftest()) {
         Serial.println("[WARN] BMI323 self-test failed.");
-    }
-
-    bmi323_set_axis_remap(0x00); // Adjust as needed
-    delay(200);
-
-    bmi323_setup_fifo();
-
-    // -------------------- BMP390 Calibration --------------------
-    if (!bmp390_apply_calibration()) {
-        Serial.println("[BMP390] No saved calibration found. Running fresh calibration...");
-        if (bmp390_calibrate_offset(sea_level_pressure) == 0) {
-            Serial.println("[BMP390] Calibration complete.");
-        } else {
-            Serial.println("[ERROR] BMP390 calibration failed!");
-        }
+        // still allow flight but degraded
     } else {
-        Serial.println("[BMP390] Calibration loaded from NVS.");
+       // Serial.println("[SENSOR] BMI323 self-test passed.");
     }
 
+    // 2️⃣ Initialize BMP390
+   // Serial.println("[SENSOR] Initializing BMP390...");
+    if (!bmp390_init_all()) {
+        Serial.println("[ERROR] BMP390 init failed!");
+        bmp_ok = false;
+    }
+
+    // 3️⃣ If either sensor failed → mark error & return
+    if (!bmi_ok || !bmp_ok) {
+        status = SENSOR_STATUS_ERROR;
+        Serial.println("[SENSOR] === SensorManager Begin FAILED ===");
+        return false;
+    }
+
+    // 4️⃣ Apply configs + calibration
+    apply_bmi323_mode(mode);
+    apply_bmp390_mode(mode);
+    run_calibration_sequence_startup();
+
+    // 5️⃣ Setup FIFO + start BMP390
+    if (!bmi323_setup_fifo()) {
+        Serial.println("[ERROR] BMI323 FIFO setup failed!");
+        status = SENSOR_STATUS_ERROR;
+        return false;
+    }
+
+    if (!bmp390_begin()) {
+        Serial.println("[ERROR] BMP390 begin failed!");
+        status = SENSOR_STATUS_ERROR;
+        return false;
+    }
+
+    // ✅ All good
+    status = SENSOR_STATUS_OK;
+    Serial.println("[SENSOR] === SensorManager Begin SUCCESS ===");
     return true;
 }
 
+
 // -------------------- Update (called frequently) --------------------
 void SensorManager::update() {
-
     bmi323_read_fifo();
-    delayMicroseconds(500); // small delay to allow FIFO to fill
+    delayMicroseconds(500); 
     process_bmp390_fifo();
 
-    // EKF and sensor fusion
     float ax = latest_ax;
     float ay = latest_ay;
     float az = latest_az;
@@ -75,10 +126,20 @@ void SensorManager::update() {
     uint32_t now = millis();
     float dt = (now - last_update_ms) * 0.001f;
     last_update_ms = now;
-    if (dt <= 0.0f || dt > 0.2f) dt = 0.01f; // safe fallback
+    if (dt <= 0.0f || dt > 0.2f) dt = 0.01f; 
 
     updateAltitude(ax, ay, az, roll, pitch, baro_alt, dt);
+
+    // --- Print velocities every 500 ms ---
+    static uint32_t last_print_ms = 0;
+    const uint32_t PRINT_INTERVAL_MS = 500; // 0.5 seconds
+    if (millis() - last_print_ms >= PRINT_INTERVAL_MS) {
+        last_print_ms = millis();
+        Serial.printf("[VELOCITY] vx=%.3f m/s, vy=%.3f m/s, vz=%.3f m/s\n", 
+                      getVelX(), getVelY(), getVelZ());
+    }
 }
+
 
 
 
@@ -198,24 +259,44 @@ void SensorManager::updateAltitude(float ax, float ay, float az,
         h = alt_baro;
         v = 0.0f;
         b = 0.0f;
+        vel_x = vel_y = vel_z = 0.0f; // seed horizontals to zero
         initialized = true;
         Serial.printf("[ALT EKF INIT] seeded at %.2f m\n", alt_baro);
         return;
     }
 
-    // Rotate accel into earth Z
+    // Precompute sin/cos
     float sinR = sinf(roll * DEG_TO_RAD);
     float cosR = cosf(roll * DEG_TO_RAD);
     float sinP = sinf(pitch * DEG_TO_RAD);
     float cosP = cosf(pitch * DEG_TO_RAD);
-    float acc_earth_z_g =  cosP * cosR * az + cosP * sinR * ay - sinP * ax;
 
-    // Prediction
+    // Use current yaw estimate (extern)
+    float yaw = estimated_yaw;
+    float sinY = sinf(yaw * DEG_TO_RAD);
+    float cosY = cosf(yaw * DEG_TO_RAD);
+
+    // --- Rotate accelerometer (body -> earth frame), measured in g
+    // Using standard rotation: Rz(yaw) * Ry(pitch) * Rx(roll)
+    // ax,ay,az are in g (you later multiply by G)
+    float acc_e_x_g = ax * (cosP * cosY)
+                    + ay * (sinR * sinP * cosY - cosR * sinY)
+                    + az * (cosR * sinP * cosY + sinR * sinY);
+
+    float acc_e_y_g = ax * (cosP * sinY)
+                    + ay * (sinR * sinP * sinY + cosR * cosY)
+                    + az * (cosR * sinP * sinY - sinR * cosY);
+
+    float acc_e_z_g = ax * (-sinP)
+                    + ay * (cosP * sinR)
+                    + az * (cosP * cosR);
+
+    // --- Vertical EKF prediction (unchanged except use acc_e_z_g)
     float h_pred = h + v*dt;
-    float v_pred = v + ((acc_earth_z_g - 1.0f - b)*G)*dt;
+    float v_pred = v + ((acc_e_z_g - 1.0f - b)*G)*dt; // subtract gravity (1g) and bias
     float b_pred = b;
 
-    // Jacobian
+    // Jacobian / covariance propagation (your existing code)
     float F[3][3] = {{1, dt, 0},{0,1,-G*dt},{0,0,1}};
     float Q[3][3] = {{0.001f,0,0},{0,0.01f,0},{0,0,0.00001f}};
     float Pnew[3][3] = {0};
@@ -227,7 +308,7 @@ void SensorManager::updateAltitude(float ax, float ay, float az,
     h = h_pred; v = v_pred; b = b_pred;
     memcpy(P, Pnew, sizeof(P));
 
-    // Measurement update
+    // Measurement update (unchanged)
     float z = alt_baro;
     float y = z - h;
     constexpr float R = 0.25f;
@@ -242,10 +323,26 @@ void SensorManager::updateAltitude(float ax, float ay, float az,
         Pupd[i][j] = P[i][j] - K[i]*P[0][j];
     memcpy(P, Pupd, sizeof(Pupd));
 
-    // Export results
+    // Export vertical
     alt_est = h;
     vel_z = v;
+
+    // --- Horizontal integration (simple inertial integration of earth-frame accel)
+    // Convert earth-frame accel from g -> m/s^2
+    float acc_e_x = acc_e_x_g * G;
+    float acc_e_y = acc_e_y_g * G;
+
+    // Remove any mean bias if you keep an estimate; here we don't have horizontal bias estimate,
+    // so this is raw integration (will drift). Consider adding zero-velocity updates or external aids.
+    vel_x += acc_e_x * dt;
+    vel_y += acc_e_y * dt;
+
+    // Optional: small velocity damping to keep runaway in check (tiny value)
+    const float vel_damping = 0.9995f;
+    vel_x *= vel_damping;
+    vel_y *= vel_damping;
 }
+
 
 
 // -------------------- Getter for altitude --------------------

@@ -5,11 +5,21 @@ ComManager::ComManager()
     : _cc2500(CC2500_CS_PIN, CC2500_GDO0_PIN, SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN),
       _newData(false) {}
 
-bool ComManager::begin() {
-    Serial.println("[ComManager] Starting CC2500 receiver...");
+      bool ComManager::begin() {
+   // Serial.println("[ComManager] Starting CC2500 receiver...");
     _cc2500.begin();
-    return true;
+
+    // ✅ Run self test once at startup
+    _healthy = selfTest();
+    if (_healthy) {
+       // Serial.println("[ComManager] CC2500 self-test PASSED");
+    } else {
+        Serial.println("[ComManager] CC2500 self-test FAILED");
+    }
+
+    return _healthy;
 }
+
 
 void ComManager::update() {
     if (_cc2500.receivePacket()) {
@@ -30,23 +40,25 @@ bool ComManager::hasNewData() const {
 bool ComManager::selfTest() {
     // Read PARTNUM (0x30)
     uint8_t part = _cc2500._readRegister(0x30);
-    Serial.printf("[CC2500 SELFTEST] PARTNUM=0x%02X\n", part);
+   // Serial.printf("[CC2500 SELFTEST] PARTNUM=0x%02X\n", part);
 
-    // Check if it’s the expected 0x80
     if (part != 0x80) {
         Serial.println("[CC2500 SELFTEST] Unexpected PARTNUM! Check wiring.");
+        _healthy = false;
         return false;
     }
 
-    // Try one receive attempt
+    // Optional quick packet test
     if (_cc2500.receivePacket()) {
-        Serial.println("[CC2500 SELFTEST] Packet received.");
+       // Serial.println("[CC2500 SELFTEST] Packet received.");
     } else {
         Serial.println("[CC2500 SELFTEST] No packet (but chip is alive).");
     }
 
+    _healthy = true;
     return true;
 }
+
 
 int8_t ComManager::getRSSI() const {
     return _cc2500.getLastRSSI();

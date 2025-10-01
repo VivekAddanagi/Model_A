@@ -5,13 +5,13 @@
 #include "SensorManager.h"
 #include "ComManager.h"
 #include "CC2500Receiver.h"  // we’ll reuse same radio driver
-
+#include "IRSensor.h"   // ✅ Add this line
 
 class FlightController;   // <-- forward declaration
 
 class TelemetryTx {
 public:
-    TelemetryTx(ComManager* com, SensorManager* sensors, FlightController* fc);
+    TelemetryTx(ComManager* com, SensorManager* sensors, FlightController* fc , IRSensor* ir);
     // Add this declaration:
     void sendDummyTelemetry();
 
@@ -22,6 +22,7 @@ private:
     ComManager* _com;
     SensorManager* _sensors;
     FlightController* _fc;   // <-- add this
+    IRSensor* _irSensor;  // <-- new
     uint8_t _packetCounter = 0;
     unsigned long _lastSend = 0;
 

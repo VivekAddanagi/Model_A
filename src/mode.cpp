@@ -19,8 +19,8 @@ static FlightModeConfig flight_mode_configs[] = {
 
 // === Function to Select Mode ===
 FlightMode select_mode() {
-    Serial.println(F("\nSelect Flight Mode: 1-STABLE 2-HOVER 3-CRUISE"));
-    Serial.print(F("Enter mode (1-3): "));
+   // Serial.println(F("\nSelect Flight Mode: 1-STABLE 2-HOVER 3-CRUISE"));
+   // Serial.print(F("Enter mode (1-3): "));
 
     unsigned long start = millis();
     while (millis() - start < 100) {  // wait 5 seconds max
@@ -47,9 +47,9 @@ void apply_bmi323_mode(FlightMode mode) {
     current_config = &flight_mode_configs[mode];
 
     // Keep only configuration prints
-    Serial.printf("\n=== Applying BMI323 Mode: %s ===\n", 
-                  mode == MODE_STABLE ? "STABLE" :
-                  mode == MODE_HOVER  ? "HOVER"  : "CRUISE");
+  //  Serial.printf("\n=== Applying BMI323 Mode: %s ===\n", 
+                 // mode == MODE_STABLE ? "STABLE" :
+                 // mode == MODE_HOVER  ? "HOVER"  : "CRUISE");
 
    // Serial.printf("Pitch stabilization: %s\n", current_config->stabilize_pitch ? "ENABLED" : "DISABLED");
     //Serial.printf("Roll stabilization : %s\n", current_config->stabilize_roll  ? "ENABLED" : "DISABLED");

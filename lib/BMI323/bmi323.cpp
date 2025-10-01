@@ -122,7 +122,7 @@ bool bmi323_init(void) {
         Serial.printf("[BMI323] Unexpected CHIP ID: 0x%02X\n", chip_id & 0xFF);
         return false;
     }
-    Serial.println("[BMI323] CHIP ID OK");
+   // Serial.println("[BMI323] CHIP ID OK");
 
     // --- Reset Sensor ---
     bmi323_writeRegister(CMD_REG, RESET_CMD);
@@ -173,7 +173,7 @@ bool bmi323_init(void) {
 
     bmi323_writeRegister(ACC_CONF_REG, 0x70A9);  // ±8g, 200Hz, high perf
     bmi323_writeRegister(GYR_CONF_REG, 0x70C9);  // ±2000 dps, 200Hz, high perf
-    Serial.println("[BMI323] Sensor configured successfully.");
+   // Serial.println("[BMI323] Sensor configured successfully.");
 
     
 
@@ -226,7 +226,7 @@ bool bmi323_read(bmi323_data_t* data) {
 
 
 bool bmi323_run_selftest(void) {
-    Serial.println("[BMI323] Preparing for self-test...");
+   // Serial.println("[BMI323] Preparing for self-test...");
 
     // Step 1: Disable alternate sensor configurations
     bmi323_writeRegister(0x28, 0x0000); // ALT_ACC_CONF
@@ -266,11 +266,11 @@ bool bmi323_run_selftest(void) {
         Serial.println("[ERROR] Self-test did not complete within timeout.");
         return false;
     }
-    Serial.println("[BMI323] Self-test completed.");
+   // Serial.println("[BMI323] Self-test completed.");
 
     // Step 5: Check overall result
     bool result = (feature_io1 >> 6) & 0x01;
-    Serial.printf("[BMI323] Overall self-test result: 0x%01X (1=OK, 0=Not OK)\n", result);
+   // Serial.printf("[BMI323] Overall self-test result: 0x%01X (1=OK, 0=Not OK)\n", result);
 
     // Step 6: Final result check
     uint16_t feature_io1_reg_value = bmi323_readRegister(0x11);
@@ -278,7 +278,7 @@ bool bmi323_run_selftest(void) {
     uint8_t error_status_final = (feature_io1_reg_value >> 0) & 0x0F;
 
     if (overall_st_result == 1 && error_status_final == 0x05) {
-        Serial.println("✅ Self-test PASSED.");
+       // Serial.println("✅ Self-test PASSED.");
         return true;
     }
 
@@ -386,7 +386,7 @@ static uint8_t fifo_buffer[FIFO_BUFFER_SIZE];
 
 // ----------------- Public: flush FIFO -----------------
 void bmi323_flush_fifo() {
-    Serial.println("[BMI323 FIFO] Flushing FIFO...");
+   // Serial.println("[BMI323 FIFO] Flushing FIFO...");
     bmi323_writeRegister(REG_FIFO_CTRL, 0x0001);  // flush bit
     delay(2);
 
@@ -489,7 +489,7 @@ bool bmi323_setup_fifo() {
   //  Serial.println("[BMI323 FIFO] Step 8: Health checks");
     uint16_t err = bmi323_readRegister(REG_ERR_REG);
   //  if (err) Serial.printf("[BMI323 ERROR] ERR_REG=0x%04X\n", err);
-    bmi323_debug_readback();
+   // bmi323_debug_readback();
     imu_filters_init(200.0f);
   //  Serial.println("[BMI323 FIFO] Setup complete");
 

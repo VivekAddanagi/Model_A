@@ -99,8 +99,8 @@ bool bmp390_init_all() {
             return false;
         }
     }
-    Serial.print("[BMP390] Using address 0x");
-    Serial.println(bmp390_address, HEX);
+   // Serial.print("[BMP390] Using address 0x");
+   // Serial.println(bmp390_address, HEX);
 
     // Soft reset
     bmp390_write(BMP390_REG_CMD, BMP390_CMD_SOFT_RESET);
@@ -117,7 +117,7 @@ bool bmp390_init_all() {
         Serial.println(chip_id, HEX);
         return false;
     }
-    Serial.println("[BMP390] CHIP ID OK");
+   // Serial.println("[BMP390] CHIP ID OK");
 
     // Read calibration
     uint8_t calib[BMP390_CALIB_DATA_LEN];
@@ -125,7 +125,7 @@ bool bmp390_init_all() {
         Serial.println("[ERROR] Failed to read calibration registers");
         return false;
     }
-    Serial.println("[BMP390] Calibration registers read OK");
+  // Serial.println("[BMP390] Calibration registers read OK");
 
   // Parse raw calibration bytes
     bmp390_calib.par_t1  = (uint16_t)(calib[1] << 8 | calib[0]);
@@ -150,7 +150,7 @@ bool bmp390_init_all() {
         return false;
     }
 
-    Serial.println("[BMP390] Init complete");
+   // Serial.println("[BMP390] Init complete");
     return true;
 }
 

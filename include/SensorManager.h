@@ -5,10 +5,17 @@
 #include "Config.h"
 #include "bmp390.h"
 
+
+enum SensorStatus {
+    SENSOR_STATUS_UNKNOWN = 0,
+    SENSOR_STATUS_OK,
+    SENSOR_STATUS_ERROR
+};
+
 class SensorManager {
 public:
     SensorManager();
-    bool begin(float sea_level_pressure);
+    bool begin(float sea_level_pressure , FlightMode mode);
     void update();
     void calibrateBMI323(bool force);
     void printBMI323Data();
@@ -32,7 +39,10 @@ public:
                         float roll, float pitch,
                         float baro_alt, float dt);
      float alt_est = 0.0f;
-
+     
+    float getVelX() const;  // ← add these
+    float getVelY() const;
+    float getVelZ() const;
     // for telemetry output
     float getAltitudeMeters() const { return getAltitude(); }
 
@@ -43,6 +53,9 @@ public:
     float getGyroX() const { return latest_gx; }
     float getGyroY() const { return latest_gy; }
     float getGyroZ() const { return latest_gz; }
+
+     SensorStatus getStatus() const { return status; }
+    const char* getStatusString() const;
 
 
 private:
@@ -93,7 +106,7 @@ private:
   
     float vel_z   = 0.0f;
 
-
+SensorStatus status = SENSOR_STATUS_UNKNOWN;
 
     
 };
