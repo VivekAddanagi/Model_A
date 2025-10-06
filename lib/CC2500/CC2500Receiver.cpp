@@ -282,7 +282,7 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out 
     if (!_waitForChipReady()) {
         digitalWrite(_cs, HIGH);
         SPI.endTransaction();
-       // Serial.println("[DEBUG RXFIFO] Chip not ready");
+        Serial.println("[DEBUG RXFIFO] Chip not ready");
         return false;
     }
 
@@ -307,7 +307,7 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out 
 
     // Store length byte
     buffer[0] = pktLen; 
-   // Serial.printf("[DEBUG RXFIFO] Reading %u payload bytes...\n", pktLen);
+  //  Serial.printf("[DEBUG RXFIFO] Reading %u payload bytes...\n", pktLen);
 
     // Read payload
     for (uint8_t i = 1; i <= pktLen; i++) {
@@ -321,17 +321,17 @@ bool CC2500Receiver::_readRXFIFO(uint8_t* buffer, uint8_t& len, bool& crcOk_out 
     SPI.endTransaction();
 
     // Debug print entire packet
-   // Serial.print("[DEBUG RXFIFO] Raw packet: ");
-   // for (uint8_t i = 0; i <= pktLen; i++) {
-       // Serial.printf("0x%02X ", buffer[i]);
+  //  Serial.print("[DEBUG RXFIFO] Raw packet: ");
+  //  for (uint8_t i = 0; i <= pktLen; i++) {
+     //   Serial.printf("0x%02X ", buffer[i]);
  //   }
-   // Serial.printf("| RSSI=0x%02X LQI/CRC=0x%02X\n", rssi, lqi_crc);
+  //  Serial.printf("| RSSI=0x%02X LQI/CRC=0x%02X\n", rssi, lqi_crc);
 
   // Process status and pass up
 _processStatusBytes(rssi, lqi_crc, rssi_dbm_out, lqi_out, crcOk_out);
 
 // Serial.printf("[DEBUG RXFIFO] RSSI=%d dBm LQI=%u CRC_OK=%d\n",
-           //   rssi_dbm_out, lqi_out, crcOk_out);
+            //  rssi_dbm_out, lqi_out, crcOk_out);
 
 
     // Reported length = 1 (length byte) + payload
@@ -364,15 +364,15 @@ bool CC2500Receiver::receivePacket() {
    uint8_t lqi;
 
 if (!_readRXFIFO(_packet, len, crcOk, rssi_dbm, lqi)) {
-    Serial.println("[DEBUG RECEIVE] No packet read from FIFO");
+   // Serial.println("[DEBUG RECEIVE] No packet read from FIFO");
     return false;
 }
 
-  //  Serial.printf("[DEBUG RECEIVE] Packet length=%u, CRC=%d\n", len, crcOk);
+   // Serial.printf("[DEBUG RECEIVE] Packet length=%u, CRC=%d\n", len, crcOk);
 
     if (!_verifyPacket(_packet, len, crcOk)) {
-        Serial.printf("[DEBUG RECEIVE] Packet verify failed (len=%u, crc=%d, start=0x%02X)\n",
-                      len, crcOk, _packet[1]);
+       // Serial.printf("[DEBUG RECEIVE] Packet verify failed (len=%u, crc=%d, start=0x%02X)\n",
+                    //  len, crcOk, _packet[1]);
         return false; // invalid packet, skip
     }
 
@@ -467,7 +467,7 @@ if (_isFifoStale()) {
 }
 
 bool CC2500Receiver::_waitForPacketGDO0() {
-    uint32_t timeoutMs = 50; // internal timeout
+    uint32_t timeoutMs = 100; // internal timeout
     uint32_t start = millis();
     while (digitalRead(_gdo0) == LOW) { // Wait for GDO0 to go HIGH
         if (millis() - start > timeoutMs) {
@@ -495,19 +495,19 @@ bool CC2500Receiver::_isFifoStale() {
 
 bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk) {
     if (!crcOk) {
-        Serial.println("[DEBUG VERIFY] CRC failed");
+      //  Serial.println("[DEBUG VERIFY] CRC failed");
         return false;
     }
 
     uint8_t pktLen = data[0]; // first byte is length
     if (len < pktLen + 1) {
-        Serial.printf("[DEBUG VERIFY] Length mismatch (len=%u, pktLen=%u)\n", len, pktLen);
+      //  Serial.printf("[DEBUG VERIFY] Length mismatch (len=%u, pktLen=%u)\n", len, pktLen);
         return false;
     }
 
     // Optional start byte check
      if (data[1] != CC2500_START_BYTE) {
-        Serial.printf("[DEBUG VERIFY] Start byte mismatch (got=0x%02X)\n", data[1]);
+       // Serial.printf("[DEBUG VERIFY] Start byte mismatch (got=0x%02X)\n", data[1]);
          return false;
      }
 
@@ -517,11 +517,11 @@ bool CC2500Receiver::_verifyPacket(const uint8_t* data, uint8_t len, bool crcOk)
 void CC2500Receiver::_configureRadio() {
    // Serial.println("[CC2500 CONFIG] Setting registers...");
    // _writeRegister(0x00, 0x06);
-    _writeRegister(0x02, 0x06);
+    _writeRegister(0x02, 0x07);
     _writeRegister(0x03, 0x07);
     _writeRegister(0x04, 0xD3);
     _writeRegister(0x05, 0x91);
-    _writeRegister(0x06, 50);
+    _writeRegister(0x06, 25);
     _writeRegister(0x07, 0x04);
     _writeRegister(0x08, 0x45);
     _writeRegister(0x0A, 0x07);

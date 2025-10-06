@@ -676,13 +676,13 @@ void bmi323_read_fifo() {
         if (now - last_debug_time >= 200) {
             last_debug_time = now;
 
-            Serial.printf("[FIFO Read Gap]: %lu ms | Parsed Frames: %d | Skipped Frames: %d | ",
-                          fifo_read_gap, parsed, skipped);
+          //  Serial.printf("[FIFO Read Gap]: %lu ms | Parsed Frames: %d | Skipped Frames: %d | ",
+                         // fifo_read_gap, parsed, skipped);
 
-            Serial.printf("ms:%lu | ", now);
-            Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
-                          latest_ax, latest_ay, latest_az,
-                          latest_gx, latest_gy, latest_gz);
+           // Serial.printf("ms:%lu | ", now);
+          //  Serial.printf("ACC[g]: %.2f %.2f %.2f | GYRO[dps]: %.2f %.2f %.2f\n",
+                        //  latest_ax, latest_ay, latest_az,
+                        //  latest_gx, latest_gy, latest_gz);
         }
     }
 

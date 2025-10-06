@@ -37,7 +37,7 @@ FlightMode select_mode() {
         delay(10);
     }
 
-    Serial.println("No input, defaulting to MODE_STABLE");
+   // Serial.println("No input, defaulting to MODE_STABLE");
     return MODE_STABLE;
 }
 

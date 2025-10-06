@@ -1,3 +1,4 @@
+
 #include <Arduino.h>
 #include "bmi323.h"
 #include "bmp390.h"
@@ -79,12 +80,12 @@ void setup() {
     flightController.begin();
 
     // 🔹 Step 4: Initialize IR sensors
-    irSensor.begin();
-    Serial.println("[IR] Sensors initialized.");
+    //irSensor.begin();
+   // Serial.println("[IR] Sensors initialized.");
 
 
     // 🔹 Step 8: Start telemetry
-    telemetry.begin();
+   // telemetry.begin();
 
     // 🔹 Measure and print setup time
     unsigned long setup_end = millis();
@@ -92,6 +93,7 @@ void setup() {
 }
 
 void loop() {
+
     static uint32_t last_ms = millis();
     uint32_t now = millis();
     float dt = (now - last_ms) * 0.001f;
@@ -119,13 +121,13 @@ void loop() {
     }
 
     // enforce geofence — reads comManager RSSI and sensor altitude, may modify setpoints
-    geofence.update(&comManager, &sensorManager, &flightController);
+    // geofence.update(&comManager, &sensorManager, &flightController);
 
     // Update flight controller with dt
     flightController.update(dt);
     t_fc = micros();
 
-    telemetry.update(); // send telemetry periodically
+   // telemetry.update(); // send telemetry periodically
 
     // --- Calculate timings ---
     uint32_t dur_com     = t_com - t_start;
@@ -134,12 +136,67 @@ void loop() {
     uint32_t dur_total   = t_fc - t_start;
 
     // Print every 1 s to avoid spamming serial
-    static uint32_t last_dbg = millis();
-    if (millis() - last_dbg > 1000) {
-        Serial.printf("[TIME] Sensors: %lu us | Com: %lu us | FC: %lu us | Total: %lu us\n",
-                      dur_sensors, dur_com, dur_fc, dur_total);
-        last_dbg = millis();
-    }
+   // static uint32_t last_dbg = millis();
+   // if (millis() - last_dbg > 1000) {
+       // Serial.printf("[TIME] Sensors: %lu us | Com: %lu us | FC: %lu us | Total: %lu us\n",
+                    //  dur_sensors, dur_com, dur_fc, dur_total);
+       // last_dbg = millis();
+   // }
 
     delay(6); // maintain sensor update rate
 }
+
+
+
+/*
+
+
+#include <Arduino.h>
+#include <driver/mcpwm.h>
+
+#define MOTOR_PIN 2
+#define PWM_FREQ 20000
+#define PWM_RES 100.0f
+#define THR_MIN 1000.0f
+#define THR_MAX 2200.0f   // allow slight overdrive
+
+float throttle_us = THR_MIN;
+bool atMax = false;
+
+static inline float usToDuty(float us) {
+  us = constrain(us, THR_MIN, THR_MAX);
+  // Map 1000..2200 -> 0..100%
+  return (us - THR_MIN) * PWM_RES / (THR_MAX - THR_MIN);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(3000);
+  Serial.println("=== OVERDRIVE RAMP TEST (up to 110%) ===");
+
+  mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, MOTOR_PIN);
+  mcpwm_config_t pwm_config;
+  pwm_config.frequency = PWM_FREQ;
+  pwm_config.cmpr_a = 0;
+  pwm_config.cmpr_b = 0;
+  pwm_config.counter_mode = MCPWM_UP_COUNTER;
+  pwm_config.duty_mode = MCPWM_DUTY_MODE_0;
+  mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &pwm_config);
+}
+
+void loop() {
+  if (!atMax) {
+    throttle_us += 20;        // ramp step
+    if (throttle_us >= THR_MAX) {
+      throttle_us = THR_MAX;
+      atMax = true;
+      Serial.println("Reached overdrive max (110%) — HOLDING. Stop if temperature/current high.");
+    }
+    float duty = usToDuty(throttle_us);
+    mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, duty);
+    Serial.printf("Throttle: %.0f us -> Duty: %.1f%%\n", throttle_us, duty);
+    delay(50);
+  }
+}
+
+*/

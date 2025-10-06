@@ -130,9 +130,9 @@ void SensorManager::update() {
 
     updateAltitude(ax, ay, az, roll, pitch, baro_alt, dt);
 
-    // --- Print velocities every 500 ms ---
+    // --- Print velocities every 1000 ms ---
     static uint32_t last_print_ms = 0;
-    const uint32_t PRINT_INTERVAL_MS = 500; // 0.5 seconds
+    const uint32_t PRINT_INTERVAL_MS = 1000; // 1 seconds
     if (millis() - last_print_ms >= PRINT_INTERVAL_MS) {
         last_print_ms = millis();
         Serial.printf("[VELOCITY] vx=%.3f m/s, vy=%.3f m/s, vz=%.3f m/s\n", 
@@ -231,7 +231,7 @@ void SensorManager::process_bmp390_fifo() {
 
     // === Throttled debug print ===
     static unsigned long last_print_ms = 0;
-    const unsigned long PRINT_INTERVAL_MS = 500; // print every 0.5 s
+    const unsigned long PRINT_INTERVAL_MS = 1500; // print every 1.5 s
 
     if (millis() - last_print_ms >= PRINT_INTERVAL_MS) {
         last_print_ms = millis();

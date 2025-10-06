@@ -37,9 +37,9 @@ float FlightController::PID_Update(PID &pid, float setpoint, float measured, flo
     // Debug PID
     static unsigned long last_pid_dbg = 0;
     if (millis() - last_pid_dbg > 200) {
-        Serial.printf("[PID] SP: %.2f, Meas: %.2f, Err: %.2f, Out: %.2f\n",
-                      setpoint, measured, error, constrained_out);
-        last_pid_dbg = millis();
+       // Serial.printf("[PID] SP: %.2f, Meas: %.2f, Err: %.2f, Out: %.2f\n",
+                    //  setpoint, measured, error, constrained_out);
+       // last_pid_dbg = millis();
     }
 
     return constrained_out;
@@ -63,6 +63,7 @@ static inline float usToDuty(float us) {
 
 // -------------------- Write PWM to motors --------------------
 void FlightController::writeMotors(float m1, float m2, float m3, float m4) {
+    
     float d1 = usToDuty(m1);
     float d2 = usToDuty(m2);
     float d3 = usToDuty(m3);
@@ -87,10 +88,10 @@ _lastMotorDuty[3] = d4;
 
 
     static unsigned long last_motor_dbg = 0;
-    if (millis() - last_motor_dbg > 200) {
+    if (millis() - last_motor_dbg > 600) {
         Serial.printf("[MOTORS] M1: %.1f%% | M2: %.1f%% | M3: %.1f%% | M4: %.1f%%\n", d1, d2, d3, d4);
         last_motor_dbg = millis();
-    }
+    }   
 }
 
 // -------------------- Initialize motors --------------------
@@ -142,7 +143,9 @@ void FlightController::update(float dt) {
     float alt_cmd   = PID_Update(pid_alt,   alt_set,   alt,   dt);
 
     // Poll IR sensors regularly
-    irSensor.poll();
+   // irSensor.poll();
+
+   /*
 
     if (irSensor.isNear(FRONT, irSensor.getThreshold())) {
         Serial.println("[AVOID] Obstacle ahead! Limiting forward pitch.");
@@ -163,15 +166,23 @@ void FlightController::update(float dt) {
         Serial.println("[AVOID] Obstacle behind! Blocking reverse motion.");
         pitch_cmd = max(pitch_cmd, 0.0f);
     }
-
+     
+    */
+   
     // --- Motor mixing ---
-    auto mixMotors = [&](float base) {
-        float M1 = base + pitch_cmd + roll_cmd - yaw_cmd;
-        float M2 = base + pitch_cmd - roll_cmd + yaw_cmd;
-        float M3 = base - pitch_cmd - roll_cmd - yaw_cmd;
-        float M4 = base - pitch_cmd + roll_cmd + yaw_cmd;
-        writeMotors(M1, M2, M3, M4);
-    };
+  auto mixMotors = [&](float base) {
+    float M1 = constrain(base + pitch_cmd + roll_cmd - yaw_cmd, 1000.0f, 2000.0f);
+    float M2 = constrain(base + pitch_cmd - roll_cmd + yaw_cmd, 1000.0f, 2000.0f);
+    float M3 = constrain(base - pitch_cmd - roll_cmd - yaw_cmd, 1000.0f, 2000.0f);
+    float M4 = constrain(base - pitch_cmd + roll_cmd + yaw_cmd, 1000.0f, 2000.0f);
+   // Serial.printf("[MIX] Base=%.1f | M1=%.1f | M2=%.1f | M3=%.1f | M4=%.1f\n",
+             // base, M1, M2, M3, M4);
+
+    writeMotors(M1, M2, M3, M4);
+};
+
+
+
 
     static float throttleOverride = 1000;
     static uint32_t landedTimer   = 0;
@@ -304,6 +315,9 @@ void FlightController::update(float dt) {
     float base_throttle = map(com->throttle, 0, 255, 1000, 2000);
     if (base_throttle < 1100) base_throttle = 1100;
 
+   // Serial.printf("[THROTTLE DEBUG] Raw=%d | Mapped=%.1f\n", com->throttle, base_throttle);
+
+
     mixMotors(base_throttle);
 
     if (com->armed && !com->failsafe && com->throttle > 0) {
@@ -318,7 +332,7 @@ void FlightController::update(float dt) {
     photoFlash = false;
 
     static unsigned long last_status_dbg = 0;
-    if (millis() - last_status_dbg > 500) {
+    if (millis() - last_status_dbg > 1000) {
         Serial.printf("[FC STATUS] ARM=%d, FS=%d, Alt=%.2f m, Thr=%d, State=%d\n",
                       com->armed, com->failsafe, alt, com->throttle, currentState);
         last_status_dbg = millis();

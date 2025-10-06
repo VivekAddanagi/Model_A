@@ -241,9 +241,9 @@ int bmp390_start_fifo_continuous_mode(bool pressure_enabled, bool temp_enabled) 
 
     uint8_t pwr_ctrl;
     bmp390_read(BMP390_REG_PWR_CTRL, &pwr_ctrl, 1);
-    Serial.printf("[DEBUG] PWR_CTRL after setting NORMAL: 0x%02X\n", pwr_ctrl); // 
+    //Serial.printf("[DEBUG] PWR_CTRL after setting NORMAL: 0x%02X\n", pwr_ctrl); // 
 
-    Serial.println("[BMP390 INFO] FIFO mode active.");
+   // Serial.println("[BMP390 INFO] FIFO mode active.");
     return 0;
 }
 
@@ -515,6 +515,6 @@ bool bmp390_begin() {
     }
 
     delay(20);  // allow first samples to accumulate
-    Serial.println("[BMP390] Init + FIFO ready");
+   // Serial.println("[BMP390] Init + FIFO ready");
     return true;
 }
