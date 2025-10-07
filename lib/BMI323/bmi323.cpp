@@ -23,7 +23,7 @@ static SPISettings bmi323_spi_settings(6500000, MSBFIRST, SPI_MODE0);
 
 // Ensure small idle after BMI SPI transactions per BMI323 requirement (>=2 µs).
 #ifndef MIN_IDLE_US_AFTER_BMI
-#define MIN_IDLE_US_AFTER_BMI 2
+#define MIN_IDLE_US_AFTER_BMI 50
 #endif
 
 // --- Internal Helper Functions ---
@@ -109,6 +109,11 @@ static bool bmi323_readExtendedRegister(uint8_t extReg, uint16_t* out_value) {
 bool bmi323_init(void) {
     // Initialize SPI and BMI CS pin (safe to call even if CC2500 also calls SPI.begin)
     SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, BMI323_CS_PIN);
+       // Ensure CC2500 CS (if present) is defined and de-asserted (prevent bus contention)
+#ifdef CC2500_CS_PIN
+    pinMode(CC2500_CS_PIN, OUTPUT);
+    digitalWrite(CC2500_CS_PIN, HIGH);
+#endif
     pinMode(BMI323_CS_PIN, OUTPUT);
     digitalWrite(BMI323_CS_PIN, HIGH);
     delay(10);
@@ -293,6 +298,8 @@ bool bmi323_set_axis_remap(uint8_t config) {
     return true;
 }
 
+/*
+
 void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length) {
     // Ensure CC2500 CS is de-asserted (never hold both CS low)
 #ifdef CC2500_CS_PIN
@@ -311,6 +318,30 @@ void bmi323_burstRead(uint8_t reg, uint8_t* buffer, uint16_t length) {
     digitalWrite(BMI323_CS_PIN, HIGH);
     SPI.endTransaction();
     // required idle
+    delayMicroseconds(MIN_IDLE_US_AFTER_BMI);
+}
+
+*/
+
+void bmi323_burstRead(uint8_t reg, uint8_t* out_buffer, uint16_t data_len) {
+    // Always ensure other CS de-asserted
+#ifdef CC2500_CS_PIN
+    digitalWrite(CC2500_CS_PIN, HIGH);
+#endif
+
+    SPI.beginTransaction(bmi323_spi_settings);
+    digitalWrite(BMI323_CS_PIN, LOW);
+
+    SPI.transfer(reg | 0x80); // header (read)
+    // discard the first returned dummy byte
+    (void)SPI.transfer(0x00);
+    for (uint16_t i = 0; i < data_len; ++i) {
+        out_buffer[i] = SPI.transfer(0x00);
+    }
+
+    digitalWrite(BMI323_CS_PIN, HIGH);
+    SPI.endTransaction();
+
     delayMicroseconds(MIN_IDLE_US_AFTER_BMI);
 }
 
@@ -364,11 +395,14 @@ void update_orientation_dt(float ax, float ay, float az,
 
     // Throttle debug prints to avoid disturbing timing
     static unsigned long last_dbg = 0;
-    if (millis() - last_dbg > 200) {
-        Serial.printf("ROLL: %.2f | PITCH: %.2f | YAW: %.2f\n",
-                      estimated_roll, estimated_pitch, estimated_yaw);
-        last_dbg = millis();
-    }
+    static bool first_print = true;
+if (first_print || millis() - last_dbg > 200) {
+    Serial.printf("ROLL: %.2f | PITCH: %.2f | YAW: %.2f\n",
+                  estimated_roll, estimated_pitch, estimated_yaw);
+    last_dbg = millis();
+    first_print = false;
+}
+
 }
 
 
@@ -491,8 +525,12 @@ bool bmi323_setup_fifo() {
   //  if (err) Serial.printf("[BMI323 ERROR] ERR_REG=0x%04X\n", err);
    // bmi323_debug_readback();
     imu_filters_init(200.0f);
-  //  Serial.println("[BMI323 FIFO] Setup complete");
 
+    // ------------------ FORCE FIRST READ ------------------
+    bmi323_fifo_ready = true;   // trigger first read
+    bmi323_read_fifo();         // read & print first orientation
+
+    //  Serial.println("[BMI323 FIFO] Setup complete");
     return true;
 }
 
@@ -558,12 +596,27 @@ void bmi323_read_fifo() {
     uint32_t now = millis();
     uint32_t fifo_read_gap = now - last_success_read_time;
 
+
     if (!bmi323_fifo_ready) return;
     bmi323_fifo_ready = false;
 
-    #if USE_INT_LATCH
-        (void)bmi323_readRegister(REG_INT_STATUS_INT1);
-    #endif
+#if USE_INT_LATCH
+    // Clear latch and read status to know exactly why we were interrupted.
+    uint16_t int1_status = bmi323_readRegister(REG_INT_STATUS_INT1);
+    (void)int1_status; // optionally print for debug
+#endif
+
+
+    // ✅ PLACE THE WAIT BLOCK RIGHT HERE
+    // Wait up to N attempts if status not set (small wait)
+    int attempts = 0;
+    while (!(bmi323_readRegister(STATUS_REG) & (1 << 7)) && attempts++ < 3) {
+        delay(2);
+    }
+    // continue even if still not ready (robustness)
+
+    // ----------------------------------------------------------------
+    // Now it's safe to query FIFO configuration and length
 
     uint16_t fifo_conf = bmi323_readRegister(REG_FIFO_CONF);
     const bool fifo_time_en = (fifo_conf & (1 << 8)) != 0;
@@ -580,9 +633,14 @@ void bmi323_read_fifo() {
     int bytes_to_read = fifo_fill_words * 2;
     if (bytes_to_read + 1 > FIFO_BUFFER_SIZE) bytes_to_read = FIFO_BUFFER_SIZE - 1;
 
-    uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
-    bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read + 1);
-    memcpy(fifo_buffer, raw + 1, bytes_to_read);
+    uint8_t raw[FIFO_BUFFER_SIZE] = {0};
+    bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read);
+    memcpy(fifo_buffer, raw, bytes_to_read);
+
+
+    //uint8_t raw[FIFO_BUFFER_SIZE + 1] = {0};
+    //bmi323_burstRead(REG_FIFO_DATA, raw, bytes_to_read + 1);
+    //memcpy(fifo_buffer, raw + 1, bytes_to_read);
 
     int index = 0;
     int parsed = 0, skipped = 0;

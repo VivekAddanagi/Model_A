@@ -77,7 +77,7 @@ void setup() {
     ledController.update(currentState, currentMode, recording, photoFlash);
 
      // 🔹 Step 3: FlightController init (motors)
-    flightController.begin();
+   flightController.begin();
 
     // 🔹 Step 4: Initialize IR sensors
     //irSensor.begin();
@@ -125,7 +125,7 @@ void loop() {
 
     // Update flight controller with dt
     flightController.update(dt);
-    t_fc = micros();
+  //  t_fc = micros();
 
    // telemetry.update(); // send telemetry periodically
 

@@ -55,7 +55,10 @@
 #define REG_FIFO_DATA        0x16   // read data bytes from here
 
 // ----------------- Config choices -----------------
-#define USE_INT_LATCH   0   // 0 = pulse mode (recommended), 1 = latched (must read INT_STATUS)
+// #define USE_INT_LATCH   0   // 0 = pulse mode (recommended), 1 = latched (must read INT_STATUS)
+// in bmi323.h
+#define USE_INT_LATCH   1   // 1 = latched mode (less chance to miss an IRQ)
+
 #define WATERMARK_FRAMES 4  // number of frames per IRQ (tune)
 #define FRAME_BYTES      16 // your current parser assumption (acc+gyr+temp(2)+time(2))
 #define WORDS_PER_FRAME  (FRAME_BYTES/2) // 8 words if 16 bytes

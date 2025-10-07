@@ -130,6 +130,7 @@ void SensorManager::update() {
 
     updateAltitude(ax, ay, az, roll, pitch, baro_alt, dt);
 
+    /*
     // --- Print velocities every 1000 ms ---
     static uint32_t last_print_ms = 0;
     const uint32_t PRINT_INTERVAL_MS = 1000; // 1 seconds
@@ -138,6 +139,7 @@ void SensorManager::update() {
         Serial.printf("[VELOCITY] vx=%.3f m/s, vy=%.3f m/s, vz=%.3f m/s\n", 
                       getVelX(), getVelY(), getVelZ());
     }
+    */                  
 }
 
 

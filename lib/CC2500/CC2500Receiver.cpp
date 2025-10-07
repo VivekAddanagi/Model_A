@@ -442,7 +442,7 @@ rssiCount++;
         lqiSum = 0;
         rssiCount = 0;
 
-        /*
+        
         // Optional detailed packet print
         Serial.printf("[RX DATA] YAW=%d PITCH=%d ROLL=%d THR=%u MODE=%u ARM=%u TO=%u FS=%u PH=%u VID=%u "
                       "| RSSI=%ddBm LQI=%u Δt=%lu ms | Loss=%lu/%lu (%.1f%%)\n",
@@ -450,7 +450,7 @@ rssiCount++;
                       rssi_dbm, lqi, gap,
                       _lostPackets, _expectedPackets, lossRate);
 
-                      */
+                      
         
     }
    
