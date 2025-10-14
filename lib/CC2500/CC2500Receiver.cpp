@@ -376,6 +376,8 @@ if (!_readRXFIFO(_packet, len, crcOk, rssi_dbm, lqi)) {
         return false; // invalid packet, skip
     }
 
+    
+
     // ✅ Valid packet
     _receivedPackets++;
     _expectedPackets++;
@@ -390,6 +392,8 @@ if (!_readRXFIFO(_packet, len, crcOk, rssi_dbm, lqi)) {
         _lostPackets += missed;
         _expectedPackets += missed;
     }
+// After confirming a valid packet:
+_gdo0TimeoutCount = 0;
 
     _hasValidPacket = true;
     anyPacketReceived = true;
@@ -466,6 +470,7 @@ if (_isFifoStale()) {
     return anyPacketReceived;
 }
 
+/*
 bool CC2500Receiver::_waitForPacketGDO0() {
     uint32_t timeoutMs = 100; // internal timeout
     uint32_t start = millis();
@@ -477,6 +482,80 @@ bool CC2500Receiver::_waitForPacketGDO0() {
     }
     return true; // packet ready
 }
+
+*/
+
+bool CC2500Receiver::_waitForPacketGDO0() {
+    uint32_t timeoutMs = 100; // keep original internal timeout
+    uint32_t start = millis();
+
+    // Wait for GDO0 to go HIGH (packet indicate)
+    while (digitalRead(_gdo0) == LOW) {
+        if (millis() - start > timeoutMs) {
+            // Timeout occurred
+            _gdo0TimeoutCount++;
+            Serial.printf("[DEBUG] GDO0 timeout (count=%u)\n", _gdo0TimeoutCount);
+
+            // If we've hit the threshold, attempt recovery
+            if (_gdo0TimeoutCount >= GDO0_TIMEOUT_THRESHOLD) {
+                Serial.println("[DEBUG] GDO0 timeout threshold reached -> running recovery");
+                _handleGDO0Timeouts();
+            }
+            return false;
+        }
+        // small delay to avoid busy-looping too hot
+        delayMicroseconds(50);
+    }
+
+    // Success: clear the timeout counter
+    if (_gdo0TimeoutCount != 0) {
+        Serial.printf("[DEBUG] GDO0 returned HIGH, clearing timeout counter (was=%u)\n", _gdo0TimeoutCount);
+        _gdo0TimeoutCount = 0;
+    }
+    return true;
+}
+
+void CC2500Receiver::_handleGDO0Timeouts() {
+    // Conservative recovery: idle -> flush rx -> rx
+    Serial.println("[CC2500 RECOVER] Starting soft recovery sequence...");
+
+    // 1) Attempt graceful flush and re-enter RX
+    _strobeCommand(SIDLE);
+    delayMicroseconds(200);
+    _strobeCommand(SFRX);
+    delayMicroseconds(200);
+    _strobeCommand(SRX);
+    delay(2);
+
+    // 2) Verify MARC state — if still not RX, do enhanced reset path
+    uint8_t marc = _readMARCState();
+    Serial.printf("[CC2500 RECOVER] MARC state after soft flush: 0x%02X\n", marc);
+
+    // MARC states: 0x01 = RX, but we check conservatively
+    if ((marc & 0x1F) != 0x01) {
+        Serial.println("[CC2500 RECOVER] Soft flush didn't enter RX, performing enhanced reset + reconfig");
+
+        // run reset sequence (re-uses existing _reset())
+        _reset();
+
+        // Reconfigure the radio registers and PATable, then go to RX
+        _configureRadio();
+        _loadPATable();
+        _strobeCommand(SRX);
+
+        // small delay to let state settle
+        delay(5);
+
+        // Optional: read PARTNUM for verification
+        uint8_t partnum = _readRegister(0x30);
+        Serial.printf("[CC2500 RECOVER] PARTNUM after reset: 0x%02X\n", partnum);
+    }
+
+    // 3) Reset counters so we don't immediately re-trigger
+    _gdo0TimeoutCount = 0;
+    Serial.println("[CC2500 RECOVER] Recovery complete, returning to RX and cleared timeout counter.");
+}
+
 
 
 bool CC2500Receiver::_isFifoStale() {

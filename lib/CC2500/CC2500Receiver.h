@@ -129,6 +129,13 @@ private:
     void _select();
     void _deselect();
 
+    // inside class CC2500Receiver { ... private: for reset of cc2500 on Air 
+uint8_t _gdo0TimeoutCount = 0;
+static constexpr uint8_t GDO0_TIMEOUT_THRESHOLD = 5;
+
+void _handleGDO0Timeouts();
+
+
         
 };
 

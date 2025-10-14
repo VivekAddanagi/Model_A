@@ -90,6 +90,10 @@ void setup() {
     // 🔹 Measure and print setup time
     unsigned long setup_end = millis();
     Serial.printf("[SETUP] Completed successfully in %lu ms\n", setup_end - setup_start);
+
+    esp_reset_reason_t reason = esp_reset_reason();
+Serial.printf("[BOOT] Reset reason: %d\n", reason);
+
 }
 
 void loop() {

@@ -298,6 +298,8 @@ void FlightController::update(float dt) {
         return;
     }
 
+    /*
+    //add after gesture arm enabled 
     // --- Prevent ARM during lockout ---
     if (lockoutActive && com->armed) {
         currentState = STATE_ARMED;
@@ -310,6 +312,8 @@ void FlightController::update(float dt) {
         photoFlash = false;
         return;
     }
+
+    */
 
     // --- NORMAL FLIGHT ---
     float base_throttle = map(com->throttle, 0, 255, 1000, 2000);
