@@ -19,7 +19,7 @@ GyroCalibration gyro_cal;
 AccelCalibration accel_cal;
 
 // --- Internal SPI Configuration ---
-static SPISettings bmi323_spi_settings(6500000, MSBFIRST, SPI_MODE0);
+static SPISettings bmi323_spi_settings(4000000, MSBFIRST, SPI_MODE0);
 
 // Ensure small idle after BMI SPI transactions per BMI323 requirement (>=2 µs).
 #ifndef MIN_IDLE_US_AFTER_BMI

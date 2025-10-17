@@ -124,9 +124,9 @@ void FlightController::begin() {
 void FlightController::update(float dt) {
 
     // --- Sensor readings ---
-    float roll  = estimated_roll;
-    float pitch = estimated_pitch;
-    float yaw   = estimated_yaw;
+    float roll  = -estimated_roll;
+    float pitch = -estimated_pitch;
+    float yaw   = -estimated_yaw;
     float alt   = sensor->alt_est;
 
     // --- Enforce Altitude Fence ---
